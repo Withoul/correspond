@@ -1,0 +1,29 @@
+{
+  "output_format": "docx",
+  "output_filename_pattern": "{{ index }}_documento.docx",
+  "outlook_enabled": false,
+  "email_column": "Email",
+  "check_column": "Enviado",
+  "doc_check_column": "Doc_Generado",
+  "doc_check_value_mode": "timestamp",
+  "doc_check_custom_text": "Generado",
+  "all_fields_mandatory": false,
+  "mandatory_columns": [
+    "Nombre",
+    "Email"
+  ],
+  "template_rules_enabled": true,
+  "template_rules": [
+    {
+      "column": "Tipo_Documento",
+      "value": "Certificado Trabajo",
+      "template_filename": "Plantilla_Certificado_Trabajo.docx"
+    }
+  ],
+  "send_mode": "display",
+  "attachment_type": "pdf",
+  "email_subject": "Notificación Oficial - {{ Nombre }}",
+  "email_body_source": "text",
+  "email_body": "Estimado/a {{ Nombre }},\n\nAdjuntamos su documento oficial correspondiente a {{ Empresa }}.\n\nSaludos cordiales.",
+  "custom_paragraph_rules": []
+}

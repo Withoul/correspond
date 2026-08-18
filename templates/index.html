@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Correspon - Automatización de Correspondencia Masiva</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- APP HEADER -->
+        <header class="app-header">
+            <div class="brand">
+                <div class="brand-icon">
+                    <i class="fa-solid fa-file-signature"></i>
+                </div>
+                <div class="brand-text">
+                    <h1>Correspon</h1>
+                    <span>Generador Masivo de Documentos</span>
+                </div>
+            </div>
+
+            <!-- GESTOR DE PROYECTOS / RUTAS -->
+            <div class="project-selector-container">
+                <i class="fa-solid fa-folder-tree icon-proj"></i>
+                <select id="project-select-dropdown" class="project-select">
+                    <option value="">-- Seleccionar Correspondencia / Ruta --</option>
+                </select>                <button type="button" id="btn-open-create-project" class="btn btn-primary btn-sm">
+                    <i class="fa-solid fa-folder-plus"></i> Crear Proyecto
+                </button>
+                <button type="button" id="btn-open-import-project" class="btn btn-secondary btn-sm">
+                    <i class="fa-solid fa-folder-open"></i> Importar Proyecto
+                </button>
+            </div>
+
+            <div class="header-actions">
+                <button type="button" id="btn-open-settings" class="btn btn-secondary btn-sm">
+                    <i class="fa-solid fa-gear"></i> Ajustes y Outlook
+                </button>
+            </div>
+        </header>
+
+        <!-- APP BODY (3-COLUMN LAYOUT) -->
+        <main class="app-body">
+            <!-- LEFT SIDEBAR (PASOS DEL PROYECTO) -->
+            <aside class="app-sidebar left-sidebar">
+                <!-- STEP 1: EXCEL DATA -->
+                <div class="sidebar-card step-card">
+                    <div class="card-header step-header flex-justify-between">
+                        <div class="flex-align-center gap-2">
+                            <span class="step-badge step-number">1</span>
+                            <h3>Datos Excel</h3>
+                        </div>
+                        <div class="step-menu-container">
+                            <button type="button" id="btn-excel-step-menu" class="btn-step-options" title="Opciones de Excel">
+                                <i class="fa-solid fa-ellipsis-vertical"></i>
+                            </button>
+                            <div id="excel-step-dropdown" class="step-dropdown-menu hidden">
+                                <button type="button" id="menu-btn-view-excel" class="step-dropdown-item"><i class="fa-solid fa-table"></i> Ver / Editar Tabla Excel</button>
+                                <button type="button" id="menu-btn-open-native-excel" class="step-dropdown-item"><i class="fa-solid fa-up-right-from-square"></i> Abrir en Excel</button>
+                                <div class="dropdown-divider"></div>
+                                <button type="button" id="menu-btn-unlink-excel" class="step-dropdown-item text-danger"><i class="fa-solid fa-link-slash"></i> Desvincular Excel</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="excel-dropzone" class="dropzone">
+                        <i class="fa-solid fa-file-excel icon-drop excel-icon"></i>
+                        <p class="drop-title">Arrastra tu archivo <strong>.xlsx / .xlsm / .csv</strong> aquí</p>
+                        <p class="drop-subtitle">o haz clic para seleccionar</p>
+                        <input type="file" id="excel-input" accept=".xlsx,.xls,.xlsm,.csv" class="file-input">
+                    </div>
+                    <div id="excel-info" class="excel-info-card hidden">
+                        <div class="excel-file-details flex-justify-between flex-align-center">
+                            <div class="excel-file-main flex-align-center gap-2">
+                                <i class="fa-solid fa-file-excel excel-icon"></i>
+                                <div>
+                                    <h4 id="excel-filename" class="excel-filename-text">datos.xlsx</h4>
+                                    <span id="excel-rows-count" class="meta fs-11">0 registros cargados</span>
+                                </div>
+                            </div>
+                            <button type="button" id="btn-remove-excel" class="btn-icon-danger" title="Desvincular Excel del Proyecto"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                        <button type="button" id="btn-view-excel" class="btn btn-secondary btn-block btn-sm mt-2">
+                            <i class="fa-solid fa-table"></i> Ver / Editar Tabla Excel
+                        </button>
+                    </div>
+                </div>
+
+                <!-- STEP 2: DOCX -->
+                <div class="sidebar-card step-card">
+                    <div class="card-header step-header flex-justify-between">
+                        <div class="flex-align-center gap-2">
+                            <span class="step-badge step-number">2</span>
+                            <h3>Plantilla Word</h3>
+                        </div>
+                        <div class="step-menu-container">
+                            <button type="button" id="btn-docx-step-menu" class="btn-step-options" title="Opciones de Plantillas Word">
+                                <i class="fa-solid fa-ellipsis-vertical"></i>
+                            </button>
+                            <div id="docx-step-dropdown" class="step-dropdown-menu hidden">
+                                <button type="button" id="menu-btn-add-docx" class="step-dropdown-item"><i class="fa-solid fa-plus"></i> Agregar Otra Plantilla Word</button>
+                                <button type="button" id="menu-btn-open-native-docx" class="step-dropdown-item"><i class="fa-solid fa-up-right-from-square"></i> Abrir en Word</button>
+                                <button type="button" id="menu-btn-template-rules" class="step-dropdown-item"><i class="fa-solid fa-diagram-project"></i> Reglas de Plantillas Condicionales</button>
+                                <div class="dropdown-divider"></div>
+                                <button type="button" id="menu-btn-unlink-docx" class="step-dropdown-item text-danger"><i class="fa-solid fa-link-slash"></i> Desvincular Plantilla Actual</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="docx-dropzone" class="dropzone">
+                        <i class="fa-solid fa-file-word icon-drop word-icon"></i>
+                        <p class="drop-title">Arrastra tu plantilla <strong>.docx</strong> aquí</p>
+                        <p class="drop-subtitle">o haz clic para seleccionar</p>
+                        <input type="file" id="docx-input" accept=".docx" class="file-input">
+                    </div>
+                    <div id="docx-templates-list" class="docx-templates-list hidden"></div>
+                </div>
+
+                <!-- STEP 3: GENERATION -->
+                <div class="sidebar-card step-card">
+                    <div class="card-header step-header">
+                        <span class="step-badge step-number">3</span>
+                        <h3>Generación</h3>
+                    </div>
+                    <div class="split-btn-group">
+                        <button type="button" id="btn-generate-docs" class="btn btn-primary btn-split-main" disabled>
+                            <i class="fa-solid fa-file-export"></i> Generar Documentos Faltantes
+                        </button>
+                        <button type="button" id="btn-generate-docs-options" class="btn btn-primary btn-split-arrow" title="Opciones de Selección Específica de Documentos" disabled>
+                            <i class="fa-solid fa-list-check"></i> <i class="fa-solid fa-chevron-down fs-11"></i>
+                        </button>
+                    </div>
+                    <div id="send-emails-split-group" class="split-btn-group mt-2">
+                        <button type="button" id="btn-send-emails" class="btn btn-secondary btn-split-main" disabled>
+                            <i class="fa-solid fa-paper-plane"></i> Enviar Correos Masivos
+                        </button>
+                        <button type="button" id="btn-send-emails-options" class="btn btn-secondary btn-split-arrow" title="Opciones de Selección Específica de Destinatarios" disabled>
+                            <i class="fa-solid fa-list-check"></i> <i class="fa-solid fa-chevron-down fs-11"></i>
+                        </button>
+                    </div>
+                    <div class="form-group mt-2">
+                        <label class="field-label">Patrón de nombre de archivo</label>
+                        <input type="text" id="pattern-input" class="form-control" placeholder="{{ index }}_documento.docx" value="{{ index }}_documento.docx">
+                    </div>
+                </div>
+
+                <!-- STEP 4: ACCIONES DEL PROYECTO -->
+                <div class="sidebar-card step-card">
+                    <div class="card-header step-header">
+                        <span class="step-badge step-number">4</span>
+                        <h3>Acciones del Proyecto</h3>
+                    </div>
+                    <button type="button" id="btn-open-project-folder" class="btn btn-secondary btn-block btn-sm hidden">
+                        <i class="fa-solid fa-folder-open"></i> Abrir Carpeta del Proyecto
+                    </button>
+                    <button type="button" id="btn-delete-project" class="btn btn-danger btn-block btn-sm mt-2 hidden">
+                        <i class="fa-solid fa-trash"></i> Eliminar Proyecto
+                    </button>
+                </div>
+            </aside>
+
+            <!-- CENTER EDITOR VIEWPORT / PANEL -->
+            <section class="editor-viewport editor-panel">
+                <div class="editor-toolbar viewport-toolbar flex-align-center">
+                    <div class="toolbar-left flex-align-center gap-2">
+                        <div class="doc-type-icon" id="doc-type-icon" title="Estado del editor">
+                            <i class="fa-solid fa-file-word"></i>
+                        </div>
+                        <span class="document-title hidden" id="doc-title-display"></span>
+                    </div>
+                    <div class="toolbar-actions toolbar-group flex-align-center gap-2 ml-auto">
+                        <button type="button" id="btn-open-generated-files" class="btn btn-secondary btn-sm" title="Ver archivos Word y PDF generados en la carpeta salida/">
+                            <i class="fa-solid fa-folder-tree"></i> Archivos Generados
+                        </button>
+                        <div id="save-docx-split-group" class="split-btn-group hidden" style="width: auto;">
+                            <button type="button" id="btn-save-app-to-word" class="btn btn-success btn-sm" title="Guardar cambios editados en la App directamente al archivo Word (.docx) en disco">
+                                <i class="fa-solid fa-floppy-disk"></i> App → Word
+                            </button>
+                            <button type="button" id="btn-sync-word-to-app" class="btn btn-secondary btn-sm" title="Sincronizar cambios desde el archivo Word (.docx) en disco hacia la App">
+                                <i class="fa-solid fa-arrows-rotate"></i> Word → App
+                            </button>
+                        </div>
+                        <div class="toggle-view-group">
+                            <button type="button" id="btn-view-word" class="btn-toolbar active" title="Editar Plantilla Word">
+                                <i class="fa-solid fa-file-word"></i> Vista Word
+                            </button>
+                            <button type="button" id="btn-view-pdf" class="btn-toolbar" title="Vista Previa de Impresión en PDF (Multi-página)">
+                                <i class="fa-solid fa-file-pdf"></i> Vista Previa PDF
+                            </button>
+                        </div>
+                        <div class="toolbar-divider"></div>
+                        <button type="button" id="btn-zoom-out" class="btn-toolbar" title="Alejar"><i class="fa-solid fa-minus"></i></button>
+                        <span id="zoom-level" class="zoom-value">100%</span>
+                        <button type="button" id="btn-zoom-in" class="btn-toolbar" title="Acercar"><i class="fa-solid fa-plus"></i></button>
+                        <select id="pdf-variation-select" class="select-sm hidden" title="Variación de PDF">
+                            <option value="">Variación</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="viewer-container canvas-scroll-area" id="viewer-container">
+                    <div id="paper-page" class="paper-page" contenteditable="true"></div>
+                    <div id="pdf-viewer-wrapper" class="pdf-viewer-wrapper hidden">
+                        <div class="pdf-loading-overlay" id="pdf-loading-overlay">
+                            <div class="pdf-loading-spinner">
+                                <i class="fa-solid fa-spinner fa-spin"></i>
+                            </div>
+                            <span>Generando vista previa PDF...</span>
+                        </div>
+                        <iframe id="pdf-viewer-frame" class="pdf-viewer-frame"></iframe>
+                    </div>
+                </div>
+            </section>
+
+            <!-- RIGHT VARIABLES SIDEBAR -->
+            <aside class="variables-sidebar">
+                <div class="sidebar-card flex-1">
+                    <div class="card-header">
+                        <i class="fa-solid fa-code text-accent"></i>
+                        <h3>Variables de Excel</h3>
+                        <span id="vars-count" class="badge-count">0</span>
+                    </div>
+                    <p class="card-hint">Arrastra y suelta fichas en la plantilla o haz clic para insertar.</p>
+                    <div id="variables-container" class="variables-list">
+                        <div class="empty-state">
+                            <i class="fa-solid fa-ghost"></i>
+                            <p>Carga un archivo Excel para extraer las columnas como variables.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="sidebar-card rules-card">
+                    <div class="card-header flex-justify-between">
+                        <div class="flex-align-center gap-2">
+                            <i class="fa-solid fa-paragraph text-warning"></i>
+                            <h3>Reglas de Párrafos</h3>
+                        </div>
+                        <button type="button" id="btn-open-paragraph-rules" class="btn btn-secondary btn-xs" title="Administrar Reglas de Párrafos">
+                            <i class="fa-solid fa-gear"></i> Configurar
+                        </button>
+                    </div>
+                    <div id="sidebar-rules-container" class="sidebar-rules-list">
+                        <span class="meta fs-11">Sin reglas de párrafos configuradas.</span>
+                    </div>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <!-- EXCEL MODAL -->
+    <div id="excel-modal" class="modal-backdrop hidden">
+        <div class="modal-content modal-card modal-lg">
+            <div class="modal-header modal-header-bar">
+                <div class="modal-header-title">
+                    <i class="fa-solid fa-table modal-header-icon"></i>
+                    <h2>Editor de Tabla Excel</h2>
+                </div>
+                <button type="button" id="btn-close-excel-modal" class="btn-icon-danger fs-18"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-toolbar mb-2 flex-justify-between flex-align-center">
+                    <div class="flex-align-center gap-2">
+                        <button type="button" id="btn-add-row" class="btn btn-secondary btn-sm"><i class="fa-solid fa-plus"></i> Agregar Fila</button>
+                        <button type="button" id="btn-add-col" class="btn btn-secondary btn-sm"><i class="fa-solid fa-square-plus"></i> Agregar Columna</button>
+                    </div>
+                    <label class="mandatory-toggle-pill flex-align-center gap-2 ml-auto" title="Exigir que todos los campos de la tabla contengan información (asterisco rojo *) al generar">
+                        <input type="checkbox" id="toggle-all-fields-mandatory" class="custom-checkbox hidden-checkbox">
+                        <span class="mandatory-pill-badge" id="mandatory-pill-badge">
+                            <i class="fa-solid fa-asterisk mandatory-star-icon"></i>
+                            <span class="mandatory-pill-text">Campos Obligatorios</span>
+                            <span class="mandatory-pill-status" id="mandatory-pill-status">DESACTIVADO</span>
+                        </span>
+                    </label>
+                    <span class="toolbar-hint ml-2">Los cambios se guardan directamente en el archivo .xlsx</span>
+                </div>
+                <div class="excel-table-scroll-container">
+                    <table class="excel-grid-table" id="excel-grid-table">
+                        <thead id="excel-grid-thead"></thead>
+                        <tbody id="excel-grid-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-actions mt-4 flex-justify-between">
+                <button type="button" id="btn-cancel-excel-edit" class="btn btn-secondary">Cancelar</button>
+                <button type="button" id="btn-save-excel-edit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Guardar Cambios en Excel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ADD COLUMN MODAL -->
+    <div id="add-column-modal" class="modal-backdrop hidden">
+        <div class="modal-content modal-card">
+            <div class="modal-header modal-header-bar">
+                <div class="modal-header-title">
+                    <i class="fa-solid fa-square-plus modal-header-icon"></i>
+                    <h2>Agregar Nueva Columna</h2>
+                </div>
+                <button type="button" id="btn-close-add-column-modal" class="btn-icon-danger fs-18"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group mt-2">
+                    <label class="field-label">Nombre de la columna</label>
+                    <input type="text" id="new-column-name-input" class="form-control input" placeholder="Ej: Estado, Observación, Fecha_Envio...">
+                </div>
+            </div>
+            <div class="modal-actions mt-4 flex-justify-end gap-2">
+                <button type="button" id="btn-cancel-add-column" class="btn btn-secondary btn-sm">Cancelar</button>
+                <button type="button" id="btn-confirm-add-column" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus"></i> Agregar Columna</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SETTINGS MODAL -->
+    <div id="settings-modal" class="modal-backdrop hidden">
+        <div class="modal-content modal-card modal-lg scrollable-modal">
+            <div class="modal-header modal-header-bar">
+                <div class="modal-header-title">
+                    <i class="fa-solid fa-gear modal-header-icon"></i>
+                    <h2>Ajustes y Outlook</h2>
+                </div>
+                <button type="button" id="btn-close-settings-modal" class="btn-icon-danger fs-18"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="grid-2col">
+                    <div class="settings-section">
+                        <h4><i class="fa-solid fa-file-export"></i> Formato de Salida</h4>
+                        <div class="form-group mt-2">
+                            <label class="field-label">Formato de archivo generado</label>
+                            <select id="setting-output-format" class="form-control input">
+                                <option value="docx">Word (.docx)</option>
+                                <option value="pdf">PDF (.pdf)</option>
+                                <option value="both">Ambos (Word y PDF)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <h4><i class="fa-solid fa-check-double"></i> Verificación de Documentos</h4>
+                        <div class="section-title-checkbox mt-2">
+                            <label class="field-label">Marcar documentos generados en Excel</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="setting-doc-check-enabled" checked>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                        <div id="doc-check-options-container" class="mt-2">
+                            <div class="form-group">
+                                <label class="field-label">Columna de verificación</label>
+                                <select id="setting-doc-check-col" class="form-control input"></select>
+                            </div>
+                            <div class="form-group mt-2">
+                                <label class="field-label">Modo de marcado</label>
+                                <select id="setting-doc-check-mode" class="form-control input">
+                                    <option value="timestamp">Fecha y hora</option>
+                                    <option value="custom_text">Texto personalizado</option>
+                                </select>
+                            </div>
+                            <div id="doc-check-custom-text-container" class="form-group mt-2 hidden">
+                                <label class="field-label">Texto personalizado</label>
+                                <input type="text" id="setting-doc-check-custom-text" class="form-control input" placeholder="Generado">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-section mt-3">
+                    <h4><i class="fa-solid fa-envelope"></i> Outlook / Envío de Correos</h4>
+                    <div class="section-title-checkbox mt-2">
+                        <label class="field-label">Habilitar envío por Outlook</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="setting-outlook-enabled">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div id="outlook-fields-container" class="mt-2 hidden">
+                        <div class="grid-2col">
+                            <div class="form-group">
+                                <label class="field-label">Columna de Email</label>
+                                <select id="setting-email-col" class="form-control input"></select>
+                            </div>
+                            <div class="form-group">
+                                <label class="field-label">Columna de Verificación de Envío</label>
+                                <select id="setting-check-col" class="form-control input"></select>
+                            </div>
+                            <div class="form-group mt-2">
+                                <label class="field-label">Modo de Envío</label>
+                                <select id="setting-send-mode" class="form-control input">
+                                    <option value="display">Mostrar en pantalla</option>
+                                    <option value="send">Enviar automáticamente</option>
+                                </select>
+                            </div>
+                            <div class="form-group mt-2">
+                                <label class="field-label">Tipo de Adjunto</label>
+                                <select id="setting-attachment-type" class="form-control input">
+                                    <option value="pdf">PDF</option>
+                                    <option value="docx">Word (.docx)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group mt-2">
+                            <label class="field-label">Asunto del Correo</label>
+                            <input type="text" id="setting-email-subject" class="form-control input" placeholder="Notificación Oficial - {{ Nombre }}">
+                        </div>
+                        <div class="form-group mt-2">
+                            <label class="field-label">Fuente del Cuerpo</label>
+                            <select id="setting-email-body-source" class="form-control input">
+                                <option value="text">Texto personalizado</option>
+                                <option value="template">Usar plantilla Word (.docx)</option>
+                            </select>
+                        </div>
+                        <div id="outlook-text-body-container" class="form-group mt-2">
+                            <label class="field-label">Cuerpo del Correo</label>
+                            <textarea id="setting-email-body" class="form-control input text-area" rows="4" placeholder="Estimado/a {{ Nombre }},..."></textarea>
+                        </div>
+                        <div id="outlook-template-body-container" class="form-group mt-2 hidden">
+                            <label class="field-label">Plantilla Word para el Cuerpo del Correo</label>
+                            <select id="setting-email-body-template" class="form-control input">
+                                <option value="">-- Seleccionar Plantilla Word --</option>
+                            </select>
+                            <p class="card-hint mt-1">El contenido traducido de la plantilla Word seleccionada se usará como cuerpo del mensaje.</p>
+                        </div>
+                        <div class="mt-2">
+                            <label class="field-label">Variables disponibles</label>
+                            <div id="email-vars-list" class="email-vars-chips-container"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-actions mt-4 flex-justify-end gap-2">
+                <button type="button" id="btn-cancel-settings" class="btn btn-secondary">Cancelar</button>
+                <button type="button" id="btn-save-settings" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Guardar Ajustes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PARAGRAPH RULES MODAL -->
+    <div id="paragraph-rules-modal" class="modal-backdrop hidden">
+        <div class="modal-content modal-card">
+            <div class="modal-header modal-header-bar">
+                <div class="modal-header-title">
+                    <i class="fa-solid fa-paragraph modal-header-icon"></i>
+                    <h2>Reglas de Párrafos Condicionales</h2>
+                </div>
+                <button type="button" id="btn-close-paragraph-modal" class="btn-icon-danger fs-18"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-subtitle text-left">Define reglas para mostrar/ocultar párrafos según el valor de una columna.</p>
+                <div id="paragraph-rules-container"></div>
+                <div class="modal-toolbar mt-2">
+                    <button type="button" id="btn-add-paragraph-rule" class="btn btn-secondary btn-sm"><i class="fa-solid fa-plus"></i> Agregar Regla de Párrafo</button>
+                </div>
+            </div>
+            <div class="modal-actions mt-4 flex-justify-end gap-2">
+                <button type="button" id="btn-cancel-paragraph-rules" class="btn btn-secondary">Cancelar</button>
+                <button type="button" id="btn-save-paragraph-rules" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Guardar Reglas</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TEMPLATE RULES MODAL -->
+    <div id="template-rules-modal" class="modal-backdrop hidden">
+        <div class="modal-content modal-card">
+            <div class="modal-header modal-header-bar">
+                <div class="modal-header-title">
+                    <i class="fa-solid fa-list modal-header-icon"></i>
+                    <h2>Reglas de Plantilla Condicionales</h2>
+                </div>
+                <button type="button" id="btn-close-template-rules-modal" class="btn-icon-danger fs-18"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-subtitle text-left">Define reglas para seleccionar automáticamente una plantilla Word según el valor de una columna en Excel.</p>
+                <div id="template-rules-list-container"></div>
+                <div class="modal-toolbar mt-2">
+                    <button type="button" id="btn-add-template-rule" class="btn btn-secondary btn-sm"><i class="fa-solid fa-plus"></i> Agregar Regla de Plantilla</button>
+                </div>
+            </div>
+            <div class="modal-actions mt-4 flex-justify-end gap-2">
+                <button type="button" id="btn-cancel-template-rules" class="btn btn-secondary">Cancelar</button>
+                <button type="button" id="btn-save-template-rules" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Guardar Reglas</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CREATE PROJECT MODAL -->
+    <div id="create-project-modal" class="modal-backdrop hidden">
+        <div class="modal-content modal-card">
+            <div class="modal-header modal-header-bar">
+                <div class="modal-header-title">
+                    <i class="fa-solid fa-folder-plus modal-header-icon"></i>
+                    <h2>Crear Nuevo Proyecto</h2>
+                </div>
+                <button type="button" id="btn-close-create-proj-modal" class="btn-icon-danger fs-18"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body text-left">
+                <div class="form-group mt-2">
+                    <label class="field-label">Nombre del Proyecto</label>
+                    <input type="text" id="proj-name-input" class="form-control input" placeholder="Ej: Correspondencia Oficial 2026">
+                </div>
+                <div class="form-group mt-2">
+                    <label class="field-label">Ruta de la Carpeta</label>
+                    <input type="text" id="proj-path-input" class="form-control input" placeholder="C:\Users\...\Proyectos_Correspondencia\Mi_Proyecto">
+                </div>
+                <p class="card-hint mt-2">Si la carpeta no existe, se creará automáticamente.</p>
+            </div>
+            <div class="modal-actions mt-4 flex-justify-end gap-2">
+                <button type="button" id="btn-cancel-create-proj" class="btn btn-secondary">Cancelar</button>
+                <button type="button" id="btn-confirm-create-proj" class="btn btn-primary"><i class="fa-solid fa-bolt"></i> Crear Proyecto</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- DELETE PROJECT MODAL -->
+    <div id="delete-project-modal" class="modal-backdrop hidden">
+        <div class="modal-content modal-card alert-danger">
+            <div class="modal-header modal-header-bar">
+                <div class="modal-header-title">
+                    <i class="fa-solid fa-trash modal-header-icon text-danger"></i>
+                    <h2>Eliminar Proyecto</h2>
+                </div>
+                <button type="button" id="btn-close-delete-proj-modal" class="btn-icon-danger fs-18"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body text-left">
+                <p>¿Estás seguro de que deseas eliminar el proyecto <strong id="delete-proj-target-name">Proyecto</strong>?</p>
+                <p class="card-hint mt-2 text-danger">Esta acción eliminará permanentemente la carpeta del proyecto y todos sus archivos.</p>
+                <div class="form-group mt-3">
+                    <label class="field-label">Escribe el nombre del proyecto para confirmar:</label>
+                    <input type="text" id="delete-proj-confirm-name-input" class="form-control input" placeholder="Nombre del proyecto">
+                </div>
+            </div>
+            <div class="modal-actions mt-4 flex-justify-end gap-2">
+                <button type="button" id="btn-cancel-delete-proj" class="btn btn-secondary">Cancelar</button>
+                <button type="button" id="btn-confirm-delete-proj" class="btn btn-danger" disabled><i class="fa-solid fa-trash"></i> Eliminar Definitivamente</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONFIRM DELETE FILE MODAL -->
+    <div id="confirm-delete-file-modal" class="modal-backdrop hidden">
+        <div class="modal-content modal-card">
+            <div class="modal-header modal-header-bar">
+                <div class="modal-header-title">
+                    <i class="fa-solid fa-triangle-exclamation modal-header-icon text-warning"></i>
+                    <h2>Confirmar Eliminación</h2>
+                </div>
+                <button type="button" id="btn-close-delete-file-modal" class="btn-icon-danger fs-18"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body text-left">
+                <p id="confirm-delete-file-message">¿Estás seguro?</p>
+            </div>
+            <div class="modal-actions mt-4 flex-justify-end gap-2">
+                <button type="button" id="btn-cancel-delete-file" class="btn btn-secondary">Cancelar</button>
+                <button type="button" id="btn-accept-delete-file" class="btn btn-danger"><i class="fa-solid fa-trash"></i> Eliminar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- DOCS SELECTION MODAL -->
+    <div id="docs-selection-modal" class="modal-backdrop hidden">
+        <div class="modal-content modal-card modal-lg">
+            <div class="modal-header modal-header-bar">
+                <div class="modal-header-title">
+                    <i class="fa-solid fa-layer-group modal-header-icon"></i>
+                    <h2>Selección de Documentos</h2>
+                </div>
+                <button type="button" id="btn-close-docs-selection-modal" class="btn-icon-danger fs-18"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-toolbar mb-2">
+                    <select id="docs-selection-id-col" class="form-control select-sm">
+                        <option value="">-- Columna de Identificación --</option>
+                    </select>
+                    <input type="text" id="docs-selection-search-filter" class="form-control input" style="max-width: 200px;" placeholder="Buscar...">
+                    <label class="field-label ml-auto flex-align-center gap-2" style="cursor: pointer;">
+                        <input type="checkbox" id="check-all-docs-selection" class="custom-checkbox">
+                        <span>Seleccionar todos</span>
+                    </label>
+                    <span id="docs-selection-counter-badge" class="status-pill active">0 seleccionados</span>
+                </div>
+                <div id="docs-selection-list-container" class="recipients-list-scroll"></div>
+            </div>
+            <div class="modal-actions mt-4 flex-justify-between">
+                <button type="button" id="btn-cancel-docs-selection-modal" class="btn btn-secondary">Cancelar</button>
+                <div class="flex-align-center gap-2">
+                    <button type="button" id="btn-generate-missing-docs-action" class="btn btn-secondary"><i class="fa-solid fa-file-circle-plus"></i> Generar Faltantes</button>
+                    <button type="button" id="btn-generate-selected-docs-action" class="btn btn-primary"><i class="fa-solid fa-file-export"></i> Generar Seleccionados</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RECIPIENTS SELECTION MODAL -->
+    <div id="recipients-selection-modal" class="modal-backdrop hidden">
+        <div class="modal-content modal-card modal-lg">
+            <div class="modal-header modal-header-bar">
+                <div class="modal-header-title">
+                    <i class="fa-solid fa-list-check modal-header-icon"></i>
+                    <h2>Selección de Destinatarios</h2>
+                </div>
+                <button type="button" id="btn-close-recipients-modal" class="btn-icon-danger fs-18"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-toolbar mb-2">
+                    <select id="recipient-id-col" class="form-control select-sm">
+                        <option value="">-- Columna de Identificación --</option>
+                    </select>
+                    <input type="text" id="recipient-search-filter" class="form-control input" style="max-width: 200px;" placeholder="Buscar...">
+                    <label class="field-label ml-auto flex-align-center gap-2" style="cursor: pointer;">
+                        <input type="checkbox" id="check-all-recipients" class="custom-checkbox">
+                        <span>Seleccionar todos</span>
+                    </label>
+                    <span id="recipients-counter-badge" class="status-pill active">0 seleccionados</span>
+                </div>
+                <div id="recipients-list-container" class="recipients-list-scroll"></div>
+            </div>
+            <div class="modal-actions mt-4 flex-justify-between">
+                <button type="button" id="btn-cancel-recipients-modal" class="btn btn-secondary">Cancelar</button>
+                <button type="button" id="btn-send-selected-recipients" class="btn btn-primary"><i class="fa-solid fa-paper-plane"></i> Enviar a Seleccionados</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PROGRESS MODAL -->
+    <div id="progress-modal" class="modal-backdrop hidden">
+        <div class="modal-content modal-card">
+            <div class="modal-header modal-header-bar">
+                <div class="modal-header-title">
+                    <i class="fa-solid fa-spinner fa-spin modal-header-icon modal-icon spin"></i>
+                    <h2 id="modal-title">Procesando...</h2>
+                </div>
+                <button type="button" id="btn-close-modal" class="btn-icon-danger fs-18"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <p id="modal-subtitle" class="modal-subtitle">Por favor espera...</p>
+                <div class="progress-bar-container">
+                    <div id="progress-bar-fill" class="progress-bar-fill" style="width: 0%"></div>
+                </div>
+                <div class="progress-stats">
+                    <span id="progress-text">Iniciando...</span>
+                    <span id="progress-percent">0%</span>
+                </div>
+            </div>
+            <div id="modal-actions" class="modal-actions hidden mt-4 flex-justify-end gap-2">
+                <button type="button" id="btn-open-folder" class="btn btn-success">
+                    <i class="fa-solid fa-folder-open"></i> Abrir Carpeta de Salida
+                </button>
+                <button type="button" id="btn-cancel-job" class="btn btn-danger">
+                    <i class="fa-solid fa-stop"></i> Cancelar Proceso
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- IMPORT PROJECT MODAL -->
+    <div id="import-project-modal" class="modal-backdrop hidden">
+        <div class="modal-content modal-card">
+            <div class="modal-header modal-header-bar">
+                <div class="modal-header-title">
+                    <i class="fa-solid fa-folder-open modal-header-icon"></i>
+                    <h2>Importar Proyecto Existente</h2>
+                </div>
+                <button type="button" id="btn-close-import-proj-modal" class="btn-icon-danger fs-18"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-hint">Ingresa la ruta completa de la carpeta en tu disco que contiene tus datos y plantillas:</p>
+                <div class="form-group mt-2">
+                    <label class="field-label">Ruta de la carpeta del proyecto</label>
+                    <input type="text" id="import-proj-path-input" class="form-control input" placeholder="Ej: C:\Users\Alex\Desktop\Mi_Correspondencia">
+                </div>
+            </div>
+            <div class="modal-actions mt-4 flex-justify-end gap-2">
+                <button type="button" id="btn-cancel-import-proj" class="btn btn-secondary btn-sm">Cancelar</button>
+                <button type="button" id="btn-confirm-import-proj" class="btn btn-primary btn-sm"><i class="fa-solid fa-folder-open"></i> Importar Proyecto</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- GENERATED FILES EXPLORER MODAL -->
+    <div id="generated-files-modal" class="modal-backdrop hidden">
+        <div class="modal-content modal-card modal-lg">
+            <div class="modal-header modal-header-bar">
+                <div class="modal-header-title">
+                    <i class="fa-solid fa-folder-tree modal-header-icon"></i>
+                    <h2>Archivos Generados (Word / PDF)</h2>
+                </div>
+                <button type="button" id="btn-close-generated-files-modal" class="btn-icon-danger fs-18"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-toolbar mb-2 flex-justify-between flex-align-center">
+                    <span class="meta" id="generated-files-subtitle">Cargando listado de archivos generados...</span>
+                    <button type="button" id="btn-open-output-folder-direct" class="btn btn-secondary btn-sm"><i class="fa-solid fa-folder-open"></i> Abrir Carpeta Salida en Explorer</button>
+                </div>
+                <div class="generated-files-list-container" id="generated-files-list-container" style="max-height: 400px; overflow-y: auto;">
+                    <!-- Dynamic items rendered here -->
+                </div>
+            </div>
+            <div class="modal-actions mt-4 flex-justify-end">
+                <button type="button" id="btn-close-generated-files-modal-btn" class="btn btn-secondary">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST NOTIFICATIONS -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- SCRIPT PRINCIPAL -->
+    <script src="/static/js/app.js?v=20260817"></script>
+</body>
+</html>
