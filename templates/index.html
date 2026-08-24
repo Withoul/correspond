@@ -422,6 +422,17 @@
                             </select>
                             <p class="card-hint mt-1">El contenido traducido de la plantilla Word seleccionada se usará como cuerpo del mensaje.</p>
                         </div>
+                        <!-- Destinatarios adicionales con reglas -->
+                        <div class="form-group mt-3 border-top pt-3">
+                            <div class="flex-justify-between flex-align-center mb-1">
+                                <label class="field-label font-bold" style="margin-bottom: 0;"><i class="fa-solid fa-address-book"></i> Destinatarios Adicionales (Fijos o Condicionales)</label>
+                                <button type="button" id="btn-add-additional-email" class="btn btn-secondary btn-xs"><i class="fa-solid fa-plus"></i> Agregar Correo</button>
+                            </div>
+                            <p class="card-hint mb-2">Envía copias del correo a destinatarios adicionales de forma permanente o condicionada a una columna y valor de Excel.</p>
+                            <div id="additional-emails-list-container" class="mt-2">
+                                <!-- Dynamic rows rendered here by JS -->
+                            </div>
+                        </div>
                         <div class="mt-2">
                             <label class="field-label">Variables disponibles</label>
                             <div id="email-vars-list" class="email-vars-chips-container"></div>

@@ -218,6 +218,13 @@ body {
     display: flex;
     flex-direction: column;
     gap: 6px;
+    position: relative;
+    z-index: 1;
+    overflow: visible;
+}
+
+.sidebar-card.active-dropdown, .step-card.active-dropdown {
+    z-index: 500 !important;
 }
 
 .sidebar-card.flex-1 {
@@ -440,7 +447,7 @@ body {
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
-    z-index: 100;
+    z-index: 1000 !important;
     min-width: 190px;
     padding: 4px 0;
 }
@@ -1405,6 +1412,12 @@ body {
 .grid-2col {
     display: grid;
     grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.grid-3col {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
     gap: 16px;
 }
 

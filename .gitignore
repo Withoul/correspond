@@ -8,3 +8,7 @@ venv/
 .DS_Store
 scratch/
 ~$*
+temp_uploads/*
+!temp_uploads/.gitkeep
+output/*
+!output/.gitkeep

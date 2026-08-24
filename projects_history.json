@@ -1,0 +1,116 @@
+{
+  "active_project_id": "proj_99a6e1c4",
+  "projects": [
+    {
+      "id": "proj_99a6e1c4",
+      "name": "Titulacion",
+      "folder_path": "C:\\Users\\Alex\\Desktop\\correspon\\Proyectos_Correspondencia\\Titulacion",
+      "excel_path": "C:\\Users\\Alex\\Desktop\\correspon\\Proyectos_Correspondencia\\Titulacion\\Titulacion_Matriz.xlsx",
+      "docx_path": "C:\\Users\\Alex\\Desktop\\correspon\\Proyectos_Correspondencia\\Titulacion\\EJEMPLO lector.docx",
+      "docx_paths": [
+        "C:\\Users\\Alex\\Desktop\\correspon\\Proyectos_Correspondencia\\Titulacion\\EJEMPLO lector.docx",
+        "C:\\Users\\Alex\\Desktop\\correspon\\Proyectos_Correspondencia\\Titulacion\\EJEMPLO TUTOR.docx"
+      ],
+      "output_path": "C:\\Users\\Alex\\Desktop\\correspon\\Proyectos_Correspondencia\\Titulacion\\salida",
+      "created_at": "2026-08-21 11:01",
+      "settings": {
+        "output_format": "docx",
+        "output_filename_pattern": "{{ index }}_documento.docx",
+        "outlook_enabled": false,
+        "email_column": "Email",
+        "check_column": "Enviado",
+        "doc_check_column": "Doc_Generado",
+        "doc_check_value_mode": "timestamp",
+        "doc_check_custom_text": "Generado",
+        "all_fields_mandatory": false,
+        "mandatory_columns": [],
+        "template_rules_enabled": false,
+        "template_rules": [],
+        "send_mode": "display",
+        "attachment_type": "pdf",
+        "email_subject": "Notificación Oficial - {{ Nombre }}",
+        "email_body_source": "text",
+        "email_body": "Estimado/a {{ Nombre }},\n\nAdjuntamos su documento oficial correspondiente a {{ Empresa }}.\n\nSaludos cordiales.",
+        "custom_paragraph_rules": [],
+        "additional_emails": []
+      }
+    },
+    {
+      "id": "proj_demo_full",
+      "name": "Correspondencia Oficial Demo",
+      "folder_path": "C:\\Users\\Alex\\Desktop\\correspon\\Proyectos_Correspondencia\\Correspondencia_Oficial_Demo",
+      "excel_path": "C:\\Users\\Alex\\Desktop\\correspon\\Proyectos_Correspondencia\\Correspondencia_Oficial_Demo\\Datos_Ejemplo_Correspondencia.xlsx",
+      "docx_path": "C:\\Users\\Alex\\Desktop\\correspon\\Proyectos_Correspondencia\\Correspondencia_Oficial_Demo\\Plantilla_Notificacion_Oficial.docx",
+      "docx_paths": [
+        "C:\\Users\\Alex\\Desktop\\correspon\\Proyectos_Correspondencia\\Correspondencia_Oficial_Demo\\Plantilla_Notificacion_Oficial.docx",
+        "C:\\Users\\Alex\\Desktop\\correspon\\Proyectos_Correspondencia\\Correspondencia_Oficial_Demo\\Plantilla_Certificado_Trabajo.docx"
+      ],
+      "output_path": "C:\\Users\\Alex\\Desktop\\correspon\\Proyectos_Correspondencia\\Correspondencia_Oficial_Demo\\salida",
+      "created_at": "2026-08-20 10:31",
+      "settings": {
+        "output_format": "docx",
+        "output_filename_pattern": "{{ index }}_documento.docx",
+        "outlook_enabled": false,
+        "email_column": "Email",
+        "check_column": "Enviado",
+        "doc_check_column": "Doc_Generado",
+        "doc_check_value_mode": "timestamp",
+        "doc_check_custom_text": "Generado",
+        "all_fields_mandatory": false,
+        "mandatory_columns": [
+          "Nombre",
+          "Email"
+        ],
+        "template_rules_enabled": true,
+        "template_rules": [
+          {
+            "column": "Tipo_Documento",
+            "value": "Certificado Trabajo",
+            "template_filename": "Plantilla_Certificado_Trabajo.docx"
+          }
+        ],
+        "send_mode": "display",
+        "attachment_type": "pdf",
+        "email_subject": "Notificación Oficial - {{ Nombre }}",
+        "email_body_source": "text",
+        "email_body": "Estimado/a {{ Nombre }},\n\nAdjuntamos su documento oficial correspondiente a {{ Empresa }}.\n\nSaludos cordiales.",
+        "custom_paragraph_rules": [],
+        "additional_emails": []
+      }
+    },
+    {
+      "id": "proj_4ced26c0",
+      "name": "Test",
+      "folder_path": "C:\\Users\\Alex\\Desktop\\correspon\\Proyectos_Correspondencia\\Test",
+      "excel_path": "C:\\Users\\Alex\\Desktop\\correspon\\Proyectos_Correspondencia\\Test\\Ingreso_Datos_Trabajo.xlsm",
+      "docx_path": null,
+      "docx_paths": [],
+      "output_path": "C:\\Users\\Alex\\Desktop\\correspon\\Proyectos_Correspondencia\\Test\\salida",
+      "created_at": "2026-08-19 08:44",
+      "settings": {
+        "output_format": "docx",
+        "output_filename_pattern": "{{ index }}_documento.docx",
+        "outlook_enabled": false,
+        "email_column": "",
+        "check_column": "",
+        "doc_check_column": "Doc_Generado",
+        "doc_check_value_mode": "timestamp",
+        "doc_check_custom_text": "Generado",
+        "all_fields_mandatory": false,
+        "mandatory_columns": [],
+        "template_rules_enabled": false,
+        "template_rules": [],
+        "send_mode": "display",
+        "attachment_type": "pdf",
+        "email_subject": "Notificación Oficial - {{ Nombre }}",
+        "email_body_source": "text",
+        "email_body": "Estimado/a {{ Nombre }},\n\nAdjuntamos su documento oficial correspondiente a {{ Empresa }}.\n\nSaludos cordiales.",
+        "custom_paragraph_rules": [],
+        "additional_emails": [],
+        "single_email_override": "",
+        "doc_check_enabled": false,
+        "email_body_template": ""
+      }
+    }
+  ]
+}

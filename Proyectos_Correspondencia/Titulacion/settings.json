@@ -8,18 +8,9 @@
   "doc_check_value_mode": "timestamp",
   "doc_check_custom_text": "Generado",
   "all_fields_mandatory": false,
-  "mandatory_columns": [
-    "Nombre",
-    "Email"
-  ],
-  "template_rules_enabled": true,
-  "template_rules": [
-    {
-      "column": "Tipo_Documento",
-      "value": "Certificado Trabajo",
-      "template_filename": "Plantilla_Certificado_Trabajo.docx"
-    }
-  ],
+  "mandatory_columns": [],
+  "template_rules_enabled": false,
+  "template_rules": [],
   "send_mode": "display",
   "attachment_type": "pdf",
   "email_subject": "Notificación Oficial - {{ Nombre }}",

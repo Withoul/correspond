@@ -8,6 +8,7 @@ import re
 import html
 import asyncio
 import subprocess
+import copy
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -16,11 +17,16 @@ import openpyxl
 import mammoth
 import zipfile
 import win32com.client
+import lxml.html
 from jinja2 import Template
 from docxtpl import DocxTemplate
 from docx import Document
-from docx.shared import Inches, Pt, RGBColor
+from docx.shared import Inches, Pt, RGBColor 
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.text.paragraph import Paragraph
+from docx.table import Table
+from docx.oxml import parse_xml, OxmlElement
+from docx.oxml.ns import qn
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
@@ -43,6 +49,14 @@ PROJECTS_FILE = EXE_DIR / "projects_history.json"
 
 for d in [STATIC_DIR, TEMPLATES_DIR, TEMP_DIR, OUTPUT_BASE_DIR]:
     d.mkdir(exist_ok=True)
+
+# Limpiar archivos de temp_uploads en el arranque de la aplicación
+for f in TEMP_DIR.glob("*"):
+    if f.is_file():
+        try:
+            os.remove(f)
+        except Exception:
+            pass
 
 app = FastAPI(title="Correspon - Automatización de Correspondencia")
 
@@ -79,7 +93,8 @@ DEFAULT_PROJECT_SETTINGS = {
     "email_subject": "Notificación Oficial - {{ Nombre }}",
     "email_body_source": "text",
     "email_body": "Estimado/a {{ Nombre }},\n\nAdjuntamos su documento oficial correspondiente a {{ Empresa }}.\n\nSaludos cordiales.",
-    "custom_paragraph_rules": []
+    "custom_paragraph_rules": [],
+    "additional_emails": []
 }
 
 def load_project_settings(folder_path: str) -> dict:
@@ -254,20 +269,29 @@ def ensure_sample_project(p_data: dict) -> dict:
     p_data["projects"] = deduped_projects
 
     if not p_data.get("active_project_id") or not any(p["id"] == p_data.get("active_project_id") for p in deduped_projects):
-        p_data["active_project_id"] = demo_id
+        p_data["active_project_id"] = deduped_projects[0]["id"] if deduped_projects else None
 
     save_projects_data(p_data)
     return p_data
 
 
 def load_projects_data() -> dict:
-    data = {"active_project_id": None, "projects": []}
     if PROJECTS_FILE.exists():
         try:
             with open(PROJECTS_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
+                projects = data.get("projects", [])
+                valid_projects = [p for p in projects if p.get("folder_path") and os.path.exists(p.get("folder_path"))]
+                data["projects"] = valid_projects
+                if data.get("active_project_id") and not any(p["id"] == data.get("active_project_id") for p in valid_projects):
+                    data["active_project_id"] = valid_projects[0]["id"] if valid_projects else None
+                
+                data = ensure_sample_project(data)
+                return data
         except Exception:
             pass
+
+    data = {"active_project_id": None, "projects": []}
     data = ensure_sample_project(data)
     return data
 
@@ -303,7 +327,8 @@ class SaveExcelDataRequest(BaseModel):
 
 class SaveDocxContentRequest(BaseModel):
     docx_path: str
-    content_html: str
+    content_html: Optional[str] = None
+    html: Optional[str] = None
 
 
 class CreateProjectRequest(BaseModel):
@@ -403,7 +428,6 @@ async def delete_project(req: DeleteProjectRequest):
     if p_data.get("active_project_id") == req.project_id:
         p_data["active_project_id"] = remaining[0]["id"] if remaining else None
 
-    p_data = ensure_sample_project(p_data)
     save_projects_data(p_data)
 
     return {
@@ -665,6 +689,46 @@ async def check_excel_status(data: dict):
         return {"exists": False, "mtime": 0}
 
 
+def docx_to_editor_html(docx_path: str) -> str:
+    """Extrae el HTML de un documento Word (.docx) preservando párrafos vacíos y enriqueciendo alineaciones y estilos para el editor."""
+    if not docx_path or not os.path.exists(docx_path):
+        return ""
+    try:
+        with open(docx_path, "rb") as f:
+            res = mammoth.convert_to_html(f, ignore_empty_paragraphs=False)
+            html_raw = res.value
+    except Exception as ex:
+        print(f"Error en extracción mammoth para {docx_path}: {ex}")
+        return ""
+
+    try:
+        doc = Document(docx_path)
+        root = lxml.html.fragment_fromstring(f"<div>{html_raw}</div>")
+        p_idx = 0
+        for elem in root:
+            tag = elem.tag.lower() if isinstance(elem.tag, str) else ''
+            if tag in ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote']:
+                if p_idx < len(doc.paragraphs):
+                    dp = doc.paragraphs[p_idx]
+                    p_idx += 1
+                    style_parts = []
+                    if dp.alignment == WD_ALIGN_PARAGRAPH.CENTER:
+                        style_parts.append('text-align: center;')
+                    elif dp.alignment == WD_ALIGN_PARAGRAPH.RIGHT:
+                        style_parts.append('text-align: right;')
+                    elif dp.alignment == WD_ALIGN_PARAGRAPH.JUSTIFY:
+                        style_parts.append('text-align: justify;')
+                    
+                    if style_parts:
+                        existing_style = elem.get('style', '')
+                        elem.set('style', (existing_style + ' ' + ' '.join(style_parts)).strip())
+
+        return ''.join(lxml.html.tostring(child, encoding='unicode') for child in root)
+    except Exception as e:
+        print(f"Error enriqueciendo HTML para {docx_path}: {e}")
+        return html_raw
+
+
 @app.post("/api/select-project")
 async def select_project(req: SelectProjectRequest):
     """Selecciona un proyecto existente y carga sus datos, plantillas Word y settings.json individual."""
@@ -710,11 +774,13 @@ async def select_project(req: SelectProjectRequest):
     raw_docx_paths = selected.get("docx_paths") or ([selected["docx_path"]] if selected.get("docx_path") else [])
     valid_docx_paths = [p for p in raw_docx_paths if os.path.exists(p)]
 
-    # Auto-descubrimiento de Plantillas Word en carpeta si no hay registradas
-    if not valid_docx_paths and folder_path_obj.exists():
-        found_docx = [f for f in folder_path_obj.glob("*.docx") if not f.name.startswith("~$")]
-        if found_docx:
-            valid_docx_paths = [str(f.resolve()) for f in found_docx]
+    # Auto-descubrimiento de Plantillas Word en la carpeta del proyecto
+    if folder_path_obj.exists():
+        found_docx = [str(f.resolve()) for f in folder_path_obj.glob("*.docx") if not f.name.startswith("~$") and f.parent == folder_path_obj]
+        for fd in found_docx:
+            if fd not in valid_docx_paths:
+                valid_docx_paths.append(fd)
+        if valid_docx_paths:
             selected["docx_path"] = valid_docx_paths[0]
             selected["docx_paths"] = valid_docx_paths
             save_projects_data(p_data)
@@ -723,16 +789,14 @@ async def select_project(req: SelectProjectRequest):
     for dp in valid_docx_paths:
         p_obj = Path(dp)
         try:
-            with open(p_obj, "rb") as f:
-                html_res = mammoth.convert_to_html(f)
-                html_content = html_res.value
+            html_content = docx_to_editor_html(str(p_obj.resolve()))
             docx_templates.append({
                 "filepath": str(p_obj.resolve()),
                 "filename": p_obj.name,
                 "html": html_content
             })
         except Exception as ex_mam:
-            print("Error leyendo plantilla mammoth:", ex_mam)
+            print("Error leyendo plantilla:", ex_mam)
 
     first_html = docx_templates[0]["html"] if docx_templates else ""
 
@@ -784,6 +848,15 @@ async def get_pdf_preview(data: dict):
                     "filename": cached["filename"],
                     "cached": True
                 }
+    # Eliminar el archivo de previsualización anterior si existe en caché antes de generar uno nuevo
+    if resolved_key in PDF_PREVIEW_CACHE:
+        old_cached = PDF_PREVIEW_CACHE[resolved_key]
+        old_pdf_file = TEMP_DIR / old_cached["filename"]
+        if old_pdf_file.exists():
+            try:
+                os.remove(old_pdf_file)
+            except Exception as e:
+                print(f"Error removiendo archivo de previsualizacion antiguo {old_pdf_file}: {e}")
 
     pdf_filename = f"preview_{uuid.uuid4().hex[:8]}.pdf"
     pdf_path = TEMP_DIR / pdf_filename
@@ -965,18 +1038,14 @@ async def upload_docx(file: UploadFile = File(...)):
 
     try:
         valid_docx_path = ensure_valid_docx(saved_path)
-
-        with open(valid_docx_path, "rb") as docx_file:
-            result = mammoth.convert_to_html(docx_file)
-            html_content = result.value
-            messages = [msg.message for msg in result.messages]
+        html_content = docx_to_editor_html(str(valid_docx_path.resolve()))
 
         return {
             "success": True,
             "filename": file.filename,
             "filepath": str(valid_docx_path.resolve()),
             "html": html_content,
-            "warnings": messages,
+            "warnings": [],
         }
     except ValueError as ve:
         if saved_path.exists():
@@ -1061,36 +1130,353 @@ async def update_excel_data(req: SaveExcelDataRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error guardando datos Excel: {str(e)}")
 
+def parse_style_attribute(style_str: str) -> dict:
+    """Parsea una cadena CSS de atributo style en un diccionario clave-valor."""
+    props = {}
+    if not style_str:
+        return props
+    for item in style_str.split(';'):
+        if ':' in item:
+            k, v = item.split(':', 1)
+            props[k.strip().lower()] = v.strip()
+    return props
+
+
+def get_alignment_from_html(elem):
+    """Detecta alineación de párrafo a partir de atributos HTML o estilos CSS."""
+    style = elem.get('style', '').lower() if hasattr(elem, 'get') else ''
+    align_attr = elem.get('align', '').lower() if hasattr(elem, 'get') else ''
+    if 'text-align: center' in style or align_attr == 'center':
+        return WD_ALIGN_PARAGRAPH.CENTER
+    elif 'text-align: right' in style or align_attr == 'right':
+        return WD_ALIGN_PARAGRAPH.RIGHT
+    elif 'text-align: justify' in style or align_attr == 'justify':
+        return WD_ALIGN_PARAGRAPH.JUSTIFY
+    elif 'text-align: left' in style or align_attr == 'left':
+        return WD_ALIGN_PARAGRAPH.LEFT
+    return None
+
+
+def extract_segments_from_html_elem(elem) -> list:
+    """Extrae recursivamente segmentos de texto con sus propiedades de formato (negrita, cursiva, color, fuente, saltos)."""
+    segments = []
+
+    def recurse(node, inherited):
+        tag = node.tag.lower() if isinstance(node.tag, str) else ''
+        current = copy.deepcopy(inherited)
+        
+        style = parse_style_attribute(node.get('style', '')) if hasattr(node, 'get') else {}
+        
+        if tag in ['strong', 'b'] or 'bold' in style.get('font-weight', '').lower() or style.get('font-weight', '') in ['700', '800', '900']:
+            current['bold'] = True
+        if tag in ['em', 'i'] or 'italic' in style.get('font-style', '').lower():
+            current['italic'] = True
+        if tag in ['u', 'ins'] or 'underline' in style.get('text-decoration', '').lower():
+            current['underline'] = True
+        if tag in ['s', 'strike', 'del'] or 'line-through' in style.get('text-decoration', '').lower():
+            current['strike'] = True
+            
+        color_val = style.get('color', '')
+        if color_val:
+            m_hex = re.search(r'#([0-9a-fA-F]{6})', color_val)
+            if m_hex:
+                current['color'] = m_hex.group(1).upper()
+            else:
+                m_rgb = re.search(r'rgb\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)', color_val)
+                if m_rgb:
+                    r, g, b = int(m_rgb.group(1)), int(m_rgb.group(2)), int(m_rgb.group(3))
+                    current['color'] = f'{r:02X}{g:02X}{b:02X}'
+
+        font_fam = style.get('font-family', '')
+        if font_fam:
+            current['font_name'] = font_fam.split(',')[0].strip('\'" ')
+
+        if tag == 'br':
+            segments.append({'text': '', 'is_break': True, **current})
+            
+        if node.text:
+            text = html.unescape(node.text)
+            if text:
+                segments.append({'text': text, 'is_break': False, **current})
+                
+        for child in node:
+            recurse(child, current)
+            if child.tail:
+                tail_text = html.unescape(child.tail)
+                if tail_text:
+                    segments.append({'text': tail_text, 'is_break': False, **inherited})
+
+    base_props = {'bold': None, 'italic': None, 'underline': None, 'strike': None, 'color': None, 'font_name': None}
+    recurse(elem, base_props)
+    return segments
+
+
+def extract_original_run_styles(paragraph) -> tuple:
+    """Extrae perfiles de formato de los runs existentes en el párrafo para permitir herencia exacta."""
+    profiles = []
+    default_profile = {
+        'font_name': None,
+        'font_size': None,
+        'color': None,
+        'bold': None,
+        'italic': None,
+        'underline': None,
+        'strike': None,
+        'rPr_xml': None
+    }
+    
+    for r in paragraph.runs:
+        color_hex = None
+        if r.font.color and r.font.color.rgb:
+            color_hex = str(r.font.color.rgb).upper()
+        elif r._r.rPr is not None:
+            c_elem = r._r.rPr.find(qn('w:color'))
+            if c_elem is not None and c_elem.get(qn('w:val')):
+                color_hex = c_elem.get(qn('w:val')).upper()
+
+        prof = {
+            'text': r.text,
+            'font_name': r.font.name,
+            'font_size': r.font.size,
+            'color': color_hex,
+            'bold': r.bold,
+            'italic': r.italic,
+            'underline': r.underline,
+            'strike': r.font.strike,
+            'rPr_xml': r._r.rPr.xml if r._r.rPr is not None else None
+        }
+        profiles.append(prof)
+        if not default_profile['font_name'] and r.font.name:
+            default_profile['font_name'] = r.font.name
+        if not default_profile['font_size'] and r.font.size:
+            default_profile['font_size'] = r.font.size
+        if not default_profile['color'] and color_hex:
+            default_profile['color'] = color_hex
+            
+    return profiles, default_profile
+
+
+def update_paragraph_with_segments(paragraph, segments: list, explicit_align=None):
+    """Actualiza los runs de un párrafo DOCX preservando el formato original y heredando tipografía/color de palabras adyacentes."""
+    if explicit_align is not None:
+        paragraph.alignment = explicit_align
+
+    orig_profiles, default_prof = extract_original_run_styles(paragraph)
+    
+    # Limpiar runs existentes del párrafo sin tocar pPr (alineación, sangrías, interlineado, numeración)
+    p_elem = paragraph._p
+    for r_elem in list(p_elem.xpath('./w:r')):
+        p_elem.remove(r_elem)
+        
+    if not segments:
+        return
+
+    prev_style = default_prof.copy()
+    
+    for idx, seg in enumerate(segments):
+        if seg.get('is_break'):
+            r = paragraph.add_run()
+            r.add_break()
+            continue
+            
+        seg_text = seg.get('text', '')
+        if not seg_text:
+            continue
+            
+        # Determinar el perfil de estilo base:
+        # 1. ¿Coincide exactamente con el texto de un run original?
+        matched_prof = None
+        for op in orig_profiles:
+            if op['text'] and op['text'].strip() == seg_text.strip():
+                matched_prof = op
+                break
+                
+        # 2. Si no coincide exactamente, verificar si existe un perfil en la misma posición ordinal
+        if not matched_prof and idx < len(orig_profiles):
+            matched_prof = orig_profiles[idx]
+            
+        # 3. Si no, heredar del run previo adyacente ("como escribir por encima")
+        base_style = matched_prof if matched_prof else prev_style
+        
+        run = paragraph.add_run(seg_text)
+        
+        # Aplicar fuente y tamaño heredados
+        if base_style.get('font_name'):
+            run.font.name = base_style['font_name']
+        if base_style.get('font_size'):
+            run.font.size = base_style['font_size']
+            
+        # Aplicar color: explícito del HTML o heredado
+        final_color = seg.get('color') or base_style.get('color')
+        if final_color:
+            try:
+                run.font.color.rgb = RGBColor.from_string(final_color)
+            except Exception:
+                pass
+                
+        # Aplicar negrita: explícito del HTML o heredado
+        if seg.get('bold') is not None:
+            run.bold = seg['bold']
+        elif base_style.get('bold') is not None:
+            run.bold = base_style['bold']
+            
+        # Aplicar cursiva
+        if seg.get('italic') is not None:
+            run.italic = seg['italic']
+        elif base_style.get('italic') is not None:
+            run.italic = base_style['italic']
+
+        # Aplicar subrayado
+        if seg.get('underline') is not None:
+            run.underline = seg['underline']
+        elif base_style.get('underline') is not None:
+            run.underline = base_style['underline']
+
+        # Aplicar tachado
+        if seg.get('strike') is not None:
+            run.font.strike = seg['strike']
+        elif base_style.get('strike') is not None:
+            run.font.strike = base_style['strike']
+
+        # Actualizar prev_style para el siguiente segmento adyacente
+        prev_style = {
+            'font_name': run.font.name or base_style.get('font_name'),
+            'font_size': run.font.size or base_style.get('font_size'),
+            'color': final_color,
+            'bold': run.bold,
+            'italic': run.italic,
+            'underline': run.underline,
+            'strike': run.font.strike,
+            'rPr_xml': None
+        }
+
+
+def sync_html_to_docx(html_content: str, docx_path: str):
+    """Actualiza el archivo DOCX existente in-place aplicando los cambios de texto/formato sin destruir la plantilla."""
+    if os.path.exists(docx_path):
+        doc = Document(docx_path)
+    else:
+        doc = Document()
+
+    if not html_content or not html_content.strip():
+        for p in doc.paragraphs:
+            p.text = ''
+        doc.save(docx_path)
+        return
+
+    raw_html = html_content.strip()
+    try:
+        root = lxml.html.fragment_fromstring(f"<div>{raw_html}</div>")
+    except Exception:
+        try:
+            root = lxml.html.fromstring(f"<html><body><div>{raw_html}</div></body></html>")
+            root = root.find(".//div") or root
+        except Exception:
+            clean_lines = re.split(r'</p>|</div>|<br\s*/?>', raw_html, flags=re.IGNORECASE)
+            for i, line in enumerate(clean_lines):
+                clean_text = html.unescape(re.sub(r'<[^>]+>', '', line)).strip()
+                if i < len(doc.paragraphs):
+                    doc.paragraphs[i].text = clean_text
+                else:
+                    doc.add_paragraph(clean_text)
+            doc.save(docx_path)
+            return
+
+    # Extraer bloques de HTML (párrafos, encabezados, tablas, listas)
+    html_blocks = []
+    for child in root:
+        tag = child.tag.lower() if isinstance(child.tag, str) else ''
+        if tag in ['ul', 'ol']:
+            for li in child.iterchildren():
+                if isinstance(li.tag, str) and li.tag.lower() == 'li':
+                    html_blocks.append(('li', li))
+        elif tag == 'table':
+            html_blocks.append(('table', child))
+        else:
+            html_blocks.append(('p', child))
+
+    docx_p_list = doc.paragraphs
+    p_cursor = 0
+    t_cursor = 0
+
+    for block_type, html_elem in html_blocks:
+        if block_type in ['p', 'li']:
+            segs = extract_segments_from_html_elem(html_elem)
+            explicit_align = get_alignment_from_html(html_elem)
+            
+            if p_cursor < len(docx_p_list):
+                target_p = docx_p_list[p_cursor]
+                update_paragraph_with_segments(target_p, segs, explicit_align)
+                p_cursor += 1
+            else:
+                new_p = doc.add_paragraph()
+                update_paragraph_with_segments(new_p, segs, explicit_align)
+                docx_p_list = doc.paragraphs
+                p_cursor += 1
+                
+        elif block_type == 'table':
+            rows_html = html_elem.xpath('.//tr')
+            if t_cursor < len(doc.tables):
+                target_tbl = doc.tables[t_cursor]
+                t_cursor += 1
+                
+                for r_idx, r_elem in enumerate(rows_html):
+                    cells_html = r_elem.xpath('./td | ./th')
+                    if r_idx < len(target_tbl.rows):
+                        row_obj = target_tbl.rows[r_idx]
+                    else:
+                        row_obj = target_tbl.add_row()
+                        
+                    for c_idx, c_elem in enumerate(cells_html):
+                        if c_idx < len(row_obj.cells):
+                            cell_obj = row_obj.cells[c_idx]
+                            cell_segs = extract_segments_from_html_elem(c_elem)
+                            cell_align = get_alignment_from_html(c_elem)
+                            if cell_obj.paragraphs:
+                                update_paragraph_with_segments(cell_obj.paragraphs[0], cell_segs, cell_align)
+                            else:
+                                cp = cell_obj.add_paragraph()
+                                update_paragraph_with_segments(cp, cell_segs, cell_align)
+            else:
+                num_cols = max(len(r.xpath('./td | ./th')) for r in rows_html) if rows_html else 1
+                new_tbl = doc.add_table(rows=0, cols=num_cols)
+                new_tbl.style = 'Table Grid'
+                for r_elem in rows_html:
+                    cells_html = r_elem.xpath('./td | ./th')
+                    row_cells = new_tbl.add_row().cells
+                    for c_idx, c_elem in enumerate(cells_html):
+                        if c_idx < len(row_cells):
+                            cell_segs = extract_segments_from_html_elem(c_elem)
+                            cell_align = get_alignment_from_html(c_elem)
+                            update_paragraph_with_segments(row_cells[c_idx].paragraphs[0], cell_segs, cell_align)
+                t_cursor += 1
+
+    # Limpiar párrafos sobrantes si el HTML tiene menos párrafos
+    while p_cursor < len(docx_p_list):
+        docx_p_list[p_cursor].text = ''
+        p_cursor += 1
+
+    doc.save(docx_path)
+
+
+# Alias de compatibilidad
+convert_html_to_docx = sync_html_to_docx
+
+
 @app.post("/api/save-docx-content")
 async def save_docx_content(req: SaveDocxContentRequest):
-    """Guarda las modificaciones realizadas en el editor A4 de vuelta al archivo .docx maestro e invalida el caché PDF."""
-    if not os.path.exists(req.docx_path):
-        raise HTTPException(status_code=400, detail="El archivo plantilla DOCX no existe.")
+    """Guarda las modificaciones realizadas en el editor A4 in-place en el archivo .docx maestro preservando todo el formato original."""
+    docx_path = req.docx_path
+    if not docx_path or not os.path.exists(docx_path):
+        raise HTTPException(status_code=400, detail="El archivo plantilla DOCX especificado no existe en el disco.")
+
+    html_raw = req.content_html if req.content_html is not None else (req.html if req.html is not None else "")
 
     try:
-        html_raw = req.content_html
-        blocks = re.findall(r'<(h[1-6]|p|div|li)>(.*?)</\1>', html_raw, re.IGNORECASE | re.DOTALL)
-
-        doc = Document()
-        if not blocks:
-            clean_text = html.unescape(re.sub(r'<[^>]+>', '', html_raw)).strip()
-            doc.add_paragraph(clean_text)
-        else:
-            for tag, text in blocks:
-                tag = tag.lower()
-                clean_text = html.unescape(re.sub(r'<[^>]+>', '', text)).strip()
-                if not clean_text:
-                    continue
-                if tag.startswith('h'):
-                    doc.add_heading(clean_text, level=int(tag[1]))
-                else:
-                    p = doc.add_paragraph()
-                    p.add_run(clean_text)
-
-        doc.save(req.docx_path)
+        sync_html_to_docx(html_raw, docx_path)
 
         # Invalidar caché PDF de esta plantilla
-        resolved_key = str(Path(req.docx_path).resolve())
+        resolved_key = str(Path(docx_path).resolve())
         if resolved_key in PDF_PREVIEW_CACHE:
             old_c = PDF_PREVIEW_CACHE.pop(resolved_key)
             old_file = TEMP_DIR / old_c.get("filename", "")
@@ -1100,7 +1486,16 @@ async def save_docx_content(req: SaveDocxContentRequest):
                 except Exception:
                     pass
 
-        return {"success": True, "filepath": req.docx_path}
+        return {
+            "success": True,
+            "filepath": docx_path,
+            "message": "Archivo Word guardado exitosamente en disco con todos sus formatos preservados."
+        }
+    except PermissionError:
+        raise HTTPException(
+            status_code=409,
+            detail="No se pudo guardar el archivo Word porque está abierto en Microsoft Word u otro programa. Por favor ciérralo e intenta nuevamente."
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al guardar plantilla Word: {str(e)}")
 
@@ -1124,22 +1519,12 @@ async def add_docx_template(project_id: str = Form(...), file: UploadFile = File
     proj_dir = Path(selected["folder_path"])
     orig_name = re.sub(r'[<>:"/\\|?*]', '_', file.filename.strip())
     saved_path = proj_dir / orig_name
-    if saved_path.exists():
-        stem = saved_path.stem
-        ext = saved_path.suffix
-        cnt = 1
-        while (proj_dir / f"{stem}_{cnt}{ext}").exists():
-            cnt += 1
-        saved_path = proj_dir / f"{stem}_{cnt}{ext}"
 
     with open(saved_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
     valid_docx = ensure_valid_docx(saved_path)
-
-    with open(valid_docx, "rb") as df_file:
-        html_res = mammoth.convert_to_html(df_file)
-        html_content = html_res.value
+    html_content = docx_to_editor_html(str(valid_docx.resolve()))
 
     paths = selected.get("docx_paths", [])
     str_path = str(valid_docx.resolve())
@@ -1439,15 +1824,46 @@ def process_generation_job(job_id: str, excel_path: str, docx_paths: List[str], 
 
             # 3. ENVÍO DE CORREO POR OUTLOOK
             if action in ["send_emails", "both"]:
-                target_email = single_email_override if single_email_override else clean_context.get(email_col, "").strip()
+                target_email = clean_context.get(email_col, "").strip()
                 check_val = str(clean_context.get(check_col, "")).strip()
                 is_already_sent = bool(check_val) and check_val.upper() not in ["NO", "FALSE", "0", "NONE"]
 
-                if target_email and (not is_already_sent or single_email_override or selected_row_indices is not None):
+                # Obtener destinatarios finales (principal + adicionales condicionales o fijos)
+                recipients = []
+                if single_email_override:
+                    recipients.append(single_email_override)
+                else:
+                    if target_email:
+                        recipients.append(target_email)
+                    
+                    # Correos adicionales/fijos con reglas
+                    additional_emails_config = st.get("additional_emails", [])
+                    for add_item in additional_emails_config:
+                        add_email = add_item.get("email", "").strip()
+                        if not add_email:
+                            continue
+                        
+                        rule_col = add_item.get("rule_column", "").strip()
+                        rule_val = add_item.get("rule_value", "").strip()
+                        
+                        if not rule_col:
+                            # Permanente
+                            if add_email not in recipients:
+                                recipients.append(add_email)
+                        else:
+                            # Condicional
+                            row_val = str(clean_context.get(rule_col, "")).strip()
+                            if row_val.lower() == rule_val.lower():
+                                if add_email not in recipients:
+                                    recipients.append(add_email)
+
+                final_recipients = "; ".join(recipients)
+
+                if final_recipients and (not is_already_sent or single_email_override or selected_row_indices is not None):
                     try:
                         outlook = win32com.client.DispatchEx("Outlook.Application")
                         mail = outlook.CreateItem(0) # 0 = olMailItem
-                        mail.To = target_email
+                        mail.To = final_recipients
 
                         subj_tmpl = Template(email_subj_template)
                         mail.Subject = subj_tmpl.render(clean_context)
@@ -1533,7 +1949,7 @@ def process_generation_job(job_id: str, excel_path: str, docx_paths: List[str], 
 
                     except Exception as ex_mail:
                         print("Error enviando correo Outlook:", ex_mail)
-                        job_warnings.append(f"Fila {orig_idx + 1} ({target_email}): {str(ex_mail)}")
+                        job_warnings.append(f"Fila {orig_idx + 1} ({final_recipients}): {str(ex_mail)}")
 
             progress_pct = int(((step_idx + 1) / total_records) * 100)
             jobs_status[job_id]["current"] = step_idx + 1
@@ -1732,8 +2148,6 @@ async def create_sample_files():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error creando archivos muestra: {str(e)}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error creando archivos muestra: {str(e)}")
 
 
 @app.get("/api/download-sample/{filename}")
@@ -1744,38 +2158,6 @@ async def download_sample(filename: str):
     raise HTTPException(status_code=404, detail="Archivo no encontrado")
 
 
-@app.post("/api/save-docx-content")
-async def save_docx_content(data: dict):
-    """Guarda los cambios de HTML realizados en el editor de la App directamente de regreso al archivo .docx en disco."""
-    filepath = data.get("docx_path")
-    html_content = data.get("html", "")
-
-    if not filepath or not os.path.exists(filepath):
-        raise HTTPException(status_code=400, detail="Ruta de archivo Word no encontrada.")
-
-    try:
-        try:
-            from htmldocx import HtmlToDocx
-            new_doc = Document()
-            parser = HtmlToDocx()
-            parser.add_html_to_document(html_content, new_doc)
-            new_doc.save(filepath)
-        except Exception:
-            # Fallback robusto usando regex de párrafos
-            doc = Document()
-            clean_html = html_content.replace("<p>", "").replace("<div>", "")
-            lines = re.split(r'</p>|</div>|<br\s*/?>', clean_html)
-            for l in lines:
-                text_line = re.sub(r'<[^>]+>', '', l).strip()
-                if text_line:
-                    doc.add_paragraph(text_line)
-            doc.save(filepath)
-
-        return {"success": True, "message": "Archivo Word guardado exitosamente en disco."}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error guardando archivo Word: {str(e)}")
-
-
 @app.post("/api/reload-docx")
 async def reload_docx(data: dict):
     """Recarga el contenido de un archivo DOCX desde disco y lo devuelve convertido a HTML."""
@@ -1784,9 +2166,7 @@ async def reload_docx(data: dict):
         raise HTTPException(status_code=404, detail="El archivo Word especificado no existe en el disco.")
 
     try:
-        with open(filepath, "rb") as docx_file:
-            result = mammoth.convert_to_html(docx_file)
-            html_content = result.value
+        html_content = docx_to_editor_html(filepath)
 
         return {
             "success": True,

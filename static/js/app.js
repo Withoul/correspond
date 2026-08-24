@@ -131,6 +131,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const settingEmailSubject = document.getElementById('setting-email-subject');
     const settingEmailBody = document.getElementById('setting-email-body');
     const emailVarsList = document.getElementById('email-vars-list');
+    const btnAddAdditionalEmail = document.getElementById('btn-add-additional-email');
+    const additionalEmailsListContainer = document.getElementById('additional-emails-list-container');
 
     const btnAddParagraphRule = document.getElementById('btn-add-paragraph-rule');
     const paragraphRulesContainer = document.getElementById('paragraph-rules-container');
@@ -163,8 +165,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnSendEmailsOptions = document.getElementById('btn-send-emails-options');
     const patternInput = document.getElementById('pattern-input');
 
-    const btnOpenNativeExcel = document.getElementById('btn-open-native-excel');
-    const btnOpenNativeDocx = document.getElementById('btn-open-native-docx');
+    const btnOpenNativeExcel = document.getElementById('menu-btn-open-native-excel');
+    const btnOpenNativeDocx = document.getElementById('menu-btn-open-native-docx');
     const btnOpenProjectFolder = document.getElementById('btn-open-project-folder');
     const btnDeleteProject = document.getElementById('btn-delete-project');
 
@@ -238,7 +240,81 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderHtmlInPaper(htmlContent) {
         if (!paperPage) return;
-        paperPage.innerHTML = htmlContent || '';
+        if (!htmlContent || !htmlContent.trim()) {
+            paperPage.innerHTML = '<p>El documento está vacío.</p>';
+            return;
+        }
+
+        const cleanHtml = htmlContent.replace(/&nbsp;/g, ' ');
+
+        const formattedHtml = cleanHtml.replace(/\{\{\s*([a-zA-Z0-9_\-áéíóúÁÉÍÓÚñÑ\s]+)\s*\}\}/g, (match, p1) => {
+            const rawTag = p1.trim();
+            const badgeClass = rawTag.startsWith('p_') ? 'docx-tag-badge docx-tag-badge-orange' : 'docx-tag-badge';
+            return `<span class="${badgeClass}" contenteditable="false">{{ ${rawTag} }}</span>`;
+        });
+
+        paperPage.innerHTML = formattedHtml;
+    }
+
+    function resetAppState() {
+        state.activeProjectId = null;
+        state.excelFilePath = null;
+        state.excelFileName = null;
+        state.excelColumns = [];
+        state.excelRecords = [];
+        state.docxFilePath = null;
+        state.docxFileName = null;
+        state.docxTemplates = [];
+        state.activeDocxIndex = 0;
+        state.outputDirPath = null;
+        state.excelMtime = 0;
+        state.isAutoSyncing = false;
+
+        if (projectSelectDropdown) projectSelectDropdown.value = '';
+
+        if (excelDropzone) excelDropzone.classList.remove('hidden');
+        if (excelInfo) excelInfo.classList.add('hidden');
+        if (btnViewExcel) btnViewExcel.classList.add('hidden');
+        if (btnOpenNativeExcel) btnOpenNativeExcel.classList.add('hidden');
+        if (excelStatusPill) {
+            excelStatusPill.classList.add('disabled');
+            excelStatusPill.classList.remove('active');
+            excelStatusPill.querySelector('span').textContent = 'Sin Excel';
+        }
+
+        if (docxDropzone) docxDropzone.classList.remove('hidden');
+        if (docxTemplatesList) {
+            docxTemplatesList.innerHTML = '';
+            docxTemplatesList.classList.add('hidden');
+        }
+        if (btnAddDocxTrigger) btnAddDocxTrigger.classList.add('hidden');
+        if (saveDocxSplitGroup) saveDocxSplitGroup.classList.add('hidden');
+        if (btnSaveDocx) btnSaveDocx.classList.add('hidden');
+        if (btnOpenNativeDocx) btnOpenNativeDocx.classList.add('hidden');
+        if (docxStatusPill) {
+            docxStatusPill.classList.add('disabled');
+            docxStatusPill.classList.remove('active');
+            docxStatusPill.querySelector('span').textContent = 'Sin Plantilla';
+        }
+
+        if (btnOpenProjectFolder) btnOpenProjectFolder.classList.add('hidden');
+        if (btnDeleteProject) btnDeleteProject.classList.add('hidden');
+
+        if (docTitleDisplay) docTitleDisplay.textContent = 'Documento Sin Título.docx';
+        if (paperPage) {
+            paperPage.innerHTML = `
+                <div class="welcome-placeholder">
+                    <div class="placeholder-content">
+                        <i class="fa-solid fa-file-circle-plus"></i>
+                        <h2>Carga tu documento .docx base</h2>
+                        <p>El contenido de tu plantilla aparecerá aquí. Podrás arrastrar y soltar las fichas de variables de Excel directamente en cualquier párrafo o tabla.</p>
+                    </div>
+                </div>`;
+        }
+
+        renderVariableChips([]);
+        renderEmailMappableVars();
+        updateGenerateButtonState();
     }
 
     // INITIALIZE PROJECTS LIST
@@ -271,16 +347,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 projectSelectDropdown.appendChild(opt);
             });
 
-            if (data.projects.length > 0) {
+            if (data.projects.length > 0 && data.active_project_id) {
                 const activeId = data.active_project_id || data.projects[0].id;
                 const active = data.projects.find(p => p.id === activeId) || data.projects[0];
                 if (active) {
                     projectSelectDropdown.value = active.id;
                     await loadSelectedProject(active.id);
+                } else {
+                    resetAppState();
                 }
+            } else {
+                resetAppState();
             }
         } catch (err) {
             console.error('Error cargando proyectos:', err);
+            resetAppState();
         }
     }
 
@@ -405,7 +486,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!state.docxTemplates || state.docxTemplates.length === 0) {
             docxTemplatesList.classList.add('hidden');
-            btnAddDocxTrigger.classList.add('hidden');
+            if (btnAddDocxTrigger) btnAddDocxTrigger.classList.add('hidden');
             docxDropzone.classList.remove('hidden');
             if (btnSaveDocx) btnSaveDocx.classList.add('hidden');
             if (btnOpenNativeDocx) btnOpenNativeDocx.classList.add('hidden');
@@ -427,7 +508,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         docxTemplatesList.classList.remove('hidden');
-        btnAddDocxTrigger.classList.remove('hidden');
+        if (btnAddDocxTrigger) btnAddDocxTrigger.classList.remove('hidden');
         docxDropzone.classList.add('hidden');
 
         state.docxTemplates.forEach((tpl, idx) => {
@@ -538,6 +619,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnOpenNativeExcel) {
         btnOpenNativeExcel.addEventListener('click', async (e) => {
             if (e) e.preventDefault();
+            if (excelStepDropdown) excelStepDropdown.classList.add('hidden');
             if (!state.excelFilePath) {
                 showToast('No hay ningún archivo Excel cargado en este proyecto', 'error');
                 return;
@@ -560,6 +642,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnOpenNativeDocx) {
         btnOpenNativeDocx.addEventListener('click', async (e) => {
             if (e) e.preventDefault();
+            if (docxStepDropdown) docxStepDropdown.classList.add('hidden');
             if (!state.docxFilePath) {
                 showToast('No hay ninguna plantilla Word cargada en este proyecto', 'error');
                 return;
@@ -655,14 +738,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.detail || 'Error eliminando el proyecto');
 
-                state.activeProjectId = null;
-                state.excelFilePath = null;
-                state.docxFilePath = null;
-                state.docxTemplates = [];
-
-                if (btnDeleteProject) btnDeleteProject.classList.add('hidden');
-                if (btnOpenProjectFolder) btnOpenProjectFolder.classList.add('hidden');
-
+                resetAppState();
                 await loadProjectsList();
                 showToast('Proyecto y sus archivos eliminados exitosamente', 'success');
             } catch (err) {
@@ -688,7 +764,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.excelColumns = data.columns;
             state.excelRecords = data.all_records || data.records || [];
             excelRowsCount.textContent = `${data.total_rows} registros cargados`;
-            excelStatusPill.querySelector('span').textContent = `${data.columns.length} Cols`;
+            if (excelStatusPill) excelStatusPill.querySelector('span').textContent = `${data.columns.length} Cols`;
 
             renderVariableChips(data.columns);
             renderEmailMappableVars();
@@ -839,14 +915,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         docx_path: currentDocx,
+                        content_html: paperPage.innerHTML,
                         html: paperPage.innerHTML
                     })
                 });
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.detail || 'Error al guardar cambios en Word');
+                if (!res.ok) throw new Error(extractErrorMessage(data.detail || data.message || 'Error al guardar cambios en Word'));
+                
+                if (state.docxTemplates && state.docxTemplates[state.activeDocxIndex]) {
+                    state.docxTemplates[state.activeDocxIndex].html = paperPage.innerHTML;
+                }
                 showToast('Cambios guardados exitosamente del Editor de la App al archivo Word (.docx)', 'success');
             } catch (err) {
-                showToast(err.message, 'error');
+                showToast(err, 'error');
             }
         });
     }
@@ -866,7 +947,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     body: JSON.stringify({ docx_path: currentDocx })
                 });
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.detail || 'Error al recargar el archivo Word');
+                if (!res.ok) throw new Error(extractErrorMessage(data.detail || data.message || 'Error al recargar el archivo Word'));
 
                 if (state.docxTemplates && state.docxTemplates[state.activeDocxIndex]) {
                     state.docxTemplates[state.activeDocxIndex].html = data.html;
@@ -874,7 +955,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderHtmlInPaper(data.html);
                 showToast('Contenido recargado exitosamente del archivo Word (.docx) a la App', 'success');
             } catch (err) {
-                showToast(err.message, 'error');
+                showToast(err, 'error');
             }
         });
     }
@@ -934,6 +1015,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // SETTINGS MODAL & OUTLOOK LOGIC
     let initialSettingsSnapshot = null;
+    let settingsBackup = null;
 
     function captureCurrentSettingsSnapshot() {
         return JSON.stringify({
@@ -951,7 +1033,8 @@ document.addEventListener('DOMContentLoaded', () => {
             send_mode: settingSendMode ? settingSendMode.value : '',
             attachment_type: settingAttachmentType ? settingAttachmentType.value : '',
             email_subject: settingEmailSubject ? settingEmailSubject.value : '',
-            email_body: settingEmailBody ? settingEmailBody.value : ''
+            email_body: settingEmailBody ? settingEmailBody.value : '',
+            additional_emails: JSON.stringify(state.settings ? (state.settings.additional_emails || []) : [])
         });
     }
 
@@ -968,6 +1051,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (btnOpenSettings) {
         btnOpenSettings.addEventListener('click', () => {
+            settingsBackup = JSON.parse(JSON.stringify(state.settings || {}));
             populateSettingsFields();
             initialSettingsSnapshot = captureCurrentSettingsSnapshot();
             if (btnSaveSettings) btnSaveSettings.disabled = true;
@@ -978,6 +1062,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnCloseSettingsModal) {
         btnCloseSettingsModal.addEventListener('click', (e) => {
             if (e) e.preventDefault();
+            if (settingsBackup) {
+                state.settings = JSON.parse(JSON.stringify(settingsBackup));
+            }
             settingsModal.classList.add('hidden');
         });
     }
@@ -985,7 +1072,25 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnCancelSettings) {
         btnCancelSettings.addEventListener('click', (e) => {
             if (e) e.preventDefault();
+            if (settingsBackup) {
+                state.settings = JSON.parse(JSON.stringify(settingsBackup));
+            }
             settingsModal.classList.add('hidden');
+        });
+    }
+
+    if (btnAddAdditionalEmail) {
+        btnAddAdditionalEmail.addEventListener('click', () => {
+            if (!state.settings.additional_emails) {
+                state.settings.additional_emails = [];
+            }
+            state.settings.additional_emails.push({
+                email: '',
+                rule_column: '',
+                rule_value: ''
+            });
+            renderAdditionalEmailsList();
+            updateSaveSettingsButtonState();
         });
     }
 
@@ -1045,6 +1150,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function populateSettingsFields() {
+        if (!state.settings.additional_emails) {
+            state.settings.additional_emails = [];
+        }
         settingOutputFormat.value = state.settings.output_format || 'docx';
         settingOutlookEnabled.checked = state.settings.outlook_enabled || false;
         
@@ -1150,6 +1258,7 @@ document.addEventListener('DOMContentLoaded', () => {
         settingEmailBody.value = state.settings.email_body || '';
 
         renderEmailMappableVars();
+        renderAdditionalEmailsList();
     }
 
     function renderEmailMappableVars() {
@@ -1185,6 +1294,92 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             emailVarsList.appendChild(chip);
+        });
+    }
+
+    function renderAdditionalEmailsList() {
+        if (!additionalEmailsListContainer) return;
+        additionalEmailsListContainer.innerHTML = '';
+
+        const additionalEmails = state.settings.additional_emails || [];
+        if (additionalEmails.length === 0) {
+            additionalEmailsListContainer.innerHTML = '<div class="empty-state p-3"><p class="meta text-center fs-12 mb-0">Sin destinatarios adicionales configurados. Haz clic en "Agregar Correo".</p></div>';
+            return;
+        }
+
+        additionalEmails.forEach((item, idx) => {
+            const card = document.createElement('div');
+            card.className = 'rule-card p-3 mb-2 bg-darker rounded border-light';
+
+            // Column options dropdown
+            let colOptionsHtml = '<option value="">-- Permanente (Sin Regla) --</option>';
+            state.excelColumns.forEach(c => {
+                colOptionsHtml += `<option value="${escapeHtml(c)}" ${c === item.rule_column ? 'selected' : ''}>Si la columna: ${escapeHtml(c)}</option>`;
+            });
+
+            const isRuleEnabled = !!item.rule_column;
+
+            card.innerHTML = `
+                <div class="grid-3col gap-2 align-center">
+                    <div class="form-group">
+                        <label class="fs-12">Enviar copia a (Email):</label>
+                        <input type="email" class="form-control additional-email-address" data-idx="${idx}" value="${escapeHtml(item.email || '')}" placeholder="ej. jefe@empresa.com">
+                    </div>
+                    <div class="form-group">
+                        <label class="fs-12">Regla condicional:</label>
+                        <select class="form-control additional-email-rule-col" data-idx="${idx}">
+                            ${colOptionsHtml}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="fs-12">Valor coincidente:</label>
+                        <div class="flex-align-center gap-2">
+                            <input type="text" class="form-control additional-email-rule-val" data-idx="${idx}" value="${escapeHtml(item.rule_value || '')}" placeholder="ej. Examen" ${isRuleEnabled ? '' : 'disabled style="opacity: 0.5;"'}>
+                            <button type="button" class="btn-icon-danger btn-delete-additional-email" data-idx="${idx}" title="Eliminar"><i class="fa-solid fa-trash-can"></i></button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            additionalEmailsListContainer.appendChild(card);
+        });
+
+        // Add event listeners
+        additionalEmailsListContainer.querySelectorAll('.additional-email-address').forEach(inp => {
+            inp.addEventListener('input', (e) => {
+                const idx = parseInt(e.target.dataset.idx, 10);
+                state.settings.additional_emails[idx].email = e.target.value;
+                updateSaveSettingsButtonState();
+            });
+        });
+
+        additionalEmailsListContainer.querySelectorAll('.additional-email-rule-col').forEach(sel => {
+            sel.addEventListener('change', (e) => {
+                const idx = parseInt(e.target.dataset.idx, 10);
+                const col = e.target.value;
+                state.settings.additional_emails[idx].rule_column = col;
+                if (!col) {
+                    state.settings.additional_emails[idx].rule_value = '';
+                }
+                renderAdditionalEmailsList();
+                updateSaveSettingsButtonState();
+            });
+        });
+
+        additionalEmailsListContainer.querySelectorAll('.additional-email-rule-val').forEach(inp => {
+            inp.addEventListener('input', (e) => {
+                const idx = parseInt(e.target.dataset.idx, 10);
+                state.settings.additional_emails[idx].rule_value = e.target.value;
+                updateSaveSettingsButtonState();
+            });
+        });
+
+        additionalEmailsListContainer.querySelectorAll('.btn-delete-additional-email').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const idx = parseInt(e.currentTarget.dataset.idx, 10);
+                state.settings.additional_emails.splice(idx, 1);
+                renderAdditionalEmailsList();
+                updateSaveSettingsButtonState();
+            });
         });
     }
 
@@ -1349,7 +1544,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // SAVE DOCX TEMPLATE CONTENT
     if (btnSaveDocx) {
         btnSaveDocx.addEventListener('click', async () => {
-            if (!state.docxFilePath) return;
+            const currentDocx = (state.docxTemplates && state.docxTemplates[state.activeDocxIndex]) ? state.docxTemplates[state.activeDocxIndex].filepath : state.docxFilePath;
+            if (!currentDocx) {
+                showToast('No hay ninguna plantilla Word cargada para guardar', 'error');
+                return;
+            }
 
             showToast('Guardando plantilla Word en disco...', 'info');
 
@@ -1358,21 +1557,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        docx_path: state.docxFilePath,
-                        content_html: paperPage.innerHTML
+                        docx_path: currentDocx,
+                        content_html: paperPage.innerHTML,
+                        html: paperPage.innerHTML
                     })
                 });
 
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.detail || 'Error guardando plantilla');
+                if (!res.ok) throw new Error(extractErrorMessage(data.detail || data.message || 'Error guardando plantilla'));
 
-                if (state.docxTemplates[state.activeDocxIndex]) {
+                if (state.docxTemplates && state.docxTemplates[state.activeDocxIndex]) {
                     state.docxTemplates[state.activeDocxIndex].html = paperPage.innerHTML;
                 }
 
                 showToast('Plantilla Word guardada exitosamente', 'success');
             } catch (err) {
-                showToast(err.message, 'error');
+                showToast(err, 'error');
             }
         });
     }
@@ -1438,9 +1638,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (btnOpenNativeExcel) btnOpenNativeExcel.classList.remove('hidden');
             excelFilename.textContent = data.filename;
             excelRowsCount.textContent = `${data.total_rows} registros encontrados`;
-            excelStatusPill.classList.remove('disabled');
-            excelStatusPill.classList.add('active');
-            excelStatusPill.querySelector('span').textContent = `${data.columns.length} Cols`;
+            if (excelStatusPill) {
+                excelStatusPill.classList.remove('disabled');
+                excelStatusPill.classList.add('active');
+                excelStatusPill.querySelector('span').textContent = `${data.columns.length} Cols`;
+            }
 
             renderVariableChips(data.columns);
             renderEmailMappableVars();
@@ -1590,9 +1792,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (saveDocxSplitGroup) saveDocxSplitGroup.classList.remove('hidden');
             if (btnSaveDocx) btnSaveDocx.classList.remove('hidden');
-            docxStatusPill.classList.remove('disabled');
-            docxStatusPill.classList.add('active');
-            docxStatusPill.querySelector('span').textContent = `${state.docxTemplates.length} Plantilla(s)`;
+            if (docxStatusPill) {
+                docxStatusPill.classList.remove('disabled');
+                docxStatusPill.classList.add('active');
+                docxStatusPill.querySelector('span').textContent = `${state.docxTemplates.length} Plantilla(s)`;
+            }
 
             updateGenerateButtonState();
             showToast('Plantilla Word agregada exitosamente', 'success');
@@ -1601,23 +1805,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // RENDER HTML IN PAPER WITH ATOMIC NON-EDITABLE BADGES
-    function renderHtmlInPaper(htmlContent) {
-        if (!htmlContent.trim()) {
-            paperPage.innerHTML = '<p>El documento está vacío.</p>';
-            return;
-        }
 
-        const cleanHtml = htmlContent.replace(/&nbsp;/g, ' ');
-
-        const formattedHtml = cleanHtml.replace(/\{\{\s*([a-zA-Z0-9_\-áéíóúÁÉÍÓÚñÑ\s]+)\s*\}\}/g, (match, p1) => {
-            const rawTag = p1.trim();
-            const badgeClass = rawTag.startsWith('p_') ? 'docx-tag-badge docx-tag-badge-orange' : 'docx-tag-badge';
-            return ` <span class="${badgeClass}" contenteditable="false">{{ ${rawTag} }}</span> `;
-        });
-
-        paperPage.innerHTML = formattedHtml;
-    }
 
     let isPaperDragSetupDone = false;
     function setupPaperDragAndDrop() {
@@ -2006,7 +2194,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 state.excelColumns = data.columns;
                 state.excelRecords = data.all_records || data.records || state.excelRecords;
                 excelRowsCount.textContent = `${data.total_rows} registros cargados`;
-                excelStatusPill.querySelector('span').textContent = `${data.columns.length} Cols`;
+                if (excelStatusPill) excelStatusPill.querySelector('span').textContent = `${data.columns.length} Cols`;
                 renderVariableChips(data.columns);
                 renderEmailMappableVars();
                 updateGenerateButtonState();
@@ -2724,6 +2912,32 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function extractErrorMessage(err, defaultMsg = 'Ocurrió un error inesperado') {
+        if (!err) return defaultMsg;
+        if (typeof err === 'string') return err;
+        if (err instanceof Error) return err.message || defaultMsg;
+        if (Array.isArray(err)) {
+            return err.map(item => {
+                if (typeof item === 'string') return item;
+                if (item && item.msg) return item.msg;
+                if (item && item.message) return item.message;
+                return JSON.stringify(item);
+            }).join(', ');
+        }
+        if (typeof err === 'object') {
+            if (err.detail) return extractErrorMessage(err.detail, defaultMsg);
+            if (err.message) return extractErrorMessage(err.message, defaultMsg);
+            if (err.msg) return err.msg;
+            if (err.error) return extractErrorMessage(err.error, defaultMsg);
+            try {
+                return JSON.stringify(err);
+            } catch {
+                return defaultMsg;
+            }
+        }
+        return String(err);
+    }
+
     function showToast(message, type = 'info') {
         const container = document.getElementById('toast-container');
         if (!container) return;
@@ -2738,10 +2952,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (type === 'success') icon = 'fa-circle-check';
         if (type === 'error') icon = 'fa-triangle-exclamation';
 
-        toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${escapeHtml(message)}</span>`;
+        const cleanMsg = extractErrorMessage(message, type === 'error' ? 'Ocurrió un error' : 'Operación completada');
+
+        toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${escapeHtml(cleanMsg)}</span>`;
         container.appendChild(toast);
 
-        const duration = type === 'info' ? 1800 : 2500;
+        const duration = type === 'info' ? 1800 : (type === 'error' ? 3500 : 2500);
 
         setTimeout(() => {
             toast.style.opacity = '0';
@@ -2928,25 +3144,49 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnExcelStepMenu && excelStepDropdown) {
         btnExcelStepMenu.addEventListener('click', (e) => {
             e.stopPropagation();
+            const card = btnExcelStepMenu.closest('.step-card');
+            document.querySelectorAll('.step-card').forEach(c => c.classList.remove('active-dropdown'));
             if (docxStepDropdown) docxStepDropdown.classList.add('hidden');
-            excelStepDropdown.classList.toggle('hidden');
+            
+            const willShow = excelStepDropdown.classList.contains('hidden');
+            if (willShow) {
+                excelStepDropdown.classList.remove('hidden');
+                if (card) card.classList.add('active-dropdown');
+            } else {
+                excelStepDropdown.classList.add('hidden');
+            }
         });
     }
 
     if (btnDocxStepMenu && docxStepDropdown) {
         btnDocxStepMenu.addEventListener('click', (e) => {
             e.stopPropagation();
+            const card = btnDocxStepMenu.closest('.step-card');
+            document.querySelectorAll('.step-card').forEach(c => c.classList.remove('active-dropdown'));
             if (excelStepDropdown) excelStepDropdown.classList.add('hidden');
-            docxStepDropdown.classList.toggle('hidden');
+            
+            const willShow = docxStepDropdown.classList.contains('hidden');
+            if (willShow) {
+                docxStepDropdown.classList.remove('hidden');
+                if (card) card.classList.add('active-dropdown');
+            } else {
+                docxStepDropdown.classList.add('hidden');
+            }
         });
     }
 
     document.addEventListener('click', (e) => {
+        let closed = false;
         if (excelStepDropdown && !excelStepDropdown.contains(e.target) && e.target !== btnExcelStepMenu) {
             excelStepDropdown.classList.add('hidden');
+            closed = true;
         }
         if (docxStepDropdown && !docxStepDropdown.contains(e.target) && e.target !== btnDocxStepMenu) {
             docxStepDropdown.classList.add('hidden');
+            closed = true;
+        }
+        if (closed) {
+            document.querySelectorAll('.step-card').forEach(c => c.classList.remove('active-dropdown'));
         }
     });
 
@@ -2954,13 +3194,6 @@ document.addEventListener('DOMContentLoaded', () => {
         menuBtnViewExcel.addEventListener('click', () => {
             if (excelStepDropdown) excelStepDropdown.classList.add('hidden');
             if (btnViewExcel) btnViewExcel.click();
-        });
-    }
-
-    if (menuBtnOpenNativeExcel) {
-        menuBtnOpenNativeExcel.addEventListener('click', () => {
-            if (excelStepDropdown) excelStepDropdown.classList.add('hidden');
-            if (btnOpenNativeExcel) btnOpenNativeExcel.click();
         });
     }
 
@@ -2975,13 +3208,6 @@ document.addEventListener('DOMContentLoaded', () => {
         menuBtnAddDocx.addEventListener('click', () => {
             if (docxStepDropdown) docxStepDropdown.classList.add('hidden');
             if (docxInput) docxInput.click();
-        });
-    }
-
-    if (menuBtnOpenNativeDocx) {
-        menuBtnOpenNativeDocx.addEventListener('click', () => {
-            if (docxStepDropdown) docxStepDropdown.classList.add('hidden');
-            if (btnOpenNativeDocx) btnOpenNativeDocx.click();
         });
     }
 
