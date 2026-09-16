@@ -26,5 +26,10 @@
   "email_body_source": "text",
   "email_body": "Estimado/a {{ Nombre }},\n\nAdjuntamos su documento oficial correspondiente a {{ Empresa }}.\n\nSaludos cordiales.",
   "custom_paragraph_rules": [],
-  "additional_emails": []
+  "additional_emails": [],
+  "email_columns": [],
+  "custom_menu_assignments": {
+    "columns": {},
+    "cells": {}
+  }
 }

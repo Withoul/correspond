@@ -17,48 +17,77 @@ if exist "dist\Correspon\Correspon.exe" (
     exit /b 0
 )
 
-:: 2. VERIFICAR PYTHON EN EL SISTEMA
-python --version >nul 2>&1
-if errorlevel 1 (
-    echo [AVISO] Python no se detecta en el comando 'python'. Intentando con 'py'...
-    py --version >nul 2>&1
-    if not errorlevel 1 (
-        doskey python=py $*
-    ) else (
-        echo [AVISO] Python 3 no se encuentra instalado en este equipo.
-        echo Intentando instalación automática via winget...
-        echo.
-        winget install --id Python.Python.3.11 --silent --accept-package-agreements --accept-source-agreements
-        if errorlevel 1 (
-            echo.
-            echo [ERROR] No se pudo instalar Python 3 automáticamente.
-            echo Por favor descarga e instala Python 3 desde https://www.python.org/ (asegúrate de marcar 'Add Python to PATH') y vuelve a ejecutar este archivo.
-            pause
-            exit /b 1
-        )
-        set "PATH=%LOCALAPPDATA%\Programs\Python\Python311;%LOCALAPPDATA%\Programs\Python\Python311\Scripts;%PATH%"
-    )
+:: 2. DETECTAR EL INTERPRETE DE PYTHON ADECUADO
+set "PY_CMD="
+
+if exist "%LOCALAPPDATA%\Programs\Python\Python311\python.exe" (
+    set "PY_CMD=%LOCALAPPDATA%\Programs\Python\Python311\python.exe"
+    goto :python_found
 )
 
-echo [OK] Python detectado correctamente.
+if exist "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" (
+    set "PY_CMD=%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
+    goto :python_found
+)
+
+if exist "%LOCALAPPDATA%\hermes\hermes-agent\venv\Scripts\python.exe" (
+    set "PY_CMD=%LOCALAPPDATA%\hermes\hermes-agent\venv\Scripts\python.exe"
+    goto :python_found
+)
+
+py -3.11 --version >nul 2>&1
+if not errorlevel 1 (
+    set "PY_CMD=py -3.11"
+    goto :python_found
+)
+
+py --version >nul 2>&1
+if not errorlevel 1 (
+    set "PY_CMD=py"
+    goto :python_found
+)
+
+python --version >nul 2>&1
+if not errorlevel 1 (
+    set "PY_CMD=python"
+    goto :python_found
+)
+
+:install_python
+echo [AVISO] Python 3 no se encuentra instalado en este equipo.
+echo Intentando instalacion automatica via winget...
+winget install --id Python.Python.3.11 --silent --accept-package-agreements --accept-source-agreements
+if exist "%LOCALAPPDATA%\Programs\Python\Python311\python.exe" (
+    set "PY_CMD=%LOCALAPPDATA%\Programs\Python\Python311\python.exe"
+    goto :python_found
+)
+echo [ERROR] No se pudo detectar Python 3.
+echo Descargue e instale Python 3.11 desde python.org y vuelva a intentar.
+pause
+exit /b 1
+
+:python_found
+echo [OK] Interprete detectado correctamente.
 
 :: 3. VERIFICAR E INSTALAR DEPENDENCIAS SI FALTAN
-python -c "import fastapi, uvicorn, openpyxl, pandas, docxtpl, docx, mammoth, win32com" >nul 2>&1
+"%PY_CMD%" -c "import fastapi, uvicorn, openpyxl, pandas, docxtpl, docx, mammoth, win32com, webview" >nul 2>&1
 if errorlevel 1 (
     echo.
     echo [INFO] Detectadas dependencias faltantes. Instalando paquetes requeridos...
     if exist "wheels" (
-        python -m pip install -r requirements.txt --find-links="wheels" --no-index >nul 2>&1
+        echo [INFO] Instalando desde paquete local wheels...
+        "%PY_CMD%" -m pip install -r requirements.txt --find-links="wheels" --no-index
+    ) else (
+        "%PY_CMD%" -m pip install -r requirements.txt
     )
-    python -m pip install -r requirements.txt
     if errorlevel 1 (
-        echo [ERROR] Ocurrió un problema al instalar las dependencias con pip.
+        echo [ERROR] Ocurrio un problema al instalar las dependencias con pip.
         pause
         exit /b 1
     )
     echo [OK] Dependencias instaladas exitosamente.
 ) else (
-    echo [OK] Dependencias verificadas y listas.
+    echo [OK] Todas las dependencias estan verificadas y listas.
 )
 
 :: 4. CREAR O ACTUALIZAR ACCESO DIRECTO EN EL ESCRITORIO
@@ -68,13 +97,13 @@ if exist "app_icon.ico" (
 
 echo.
 echo ========================================================
-echo   INICIANDO SERVIDOR Y APLICACIÓN...
+echo   INICIANDO CORRESPON...
 echo ========================================================
 echo.
 
-python main.py
+"%PY_CMD%" main.py
 if errorlevel 1 (
     echo.
-    echo [ERROR] Ocurrió un error al iniciar Correspon.
+    echo [ERROR] Ocurrio un error al ejecutar la aplicacion.
     pause
 )

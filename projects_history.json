@@ -18,11 +18,6 @@
         "output_filename_pattern": "{{ index }}_documento.docx",
         "outlook_enabled": false,
         "email_column": "",
-        "email_columns": [],
-        "custom_menu_assignments": {
-          "columns": {},
-          "cells": {}
-        },
         "check_column": "",
         "doc_check_column": "Doc_Generado",
         "doc_check_value_mode": "timestamp",
@@ -38,6 +33,11 @@
         "email_body": "",
         "custom_paragraph_rules": [],
         "additional_emails": [],
+        "email_columns": [],
+        "custom_menu_assignments": {
+          "columns": {},
+          "cells": {}
+        },
         "single_email_override": "",
         "doc_check_enabled": false,
         "email_body_template": ""
@@ -120,7 +120,12 @@
         "email_body_source": "text",
         "email_body": "Estimado/a {{ Nombre }},\n\nAdjuntamos su documento oficial correspondiente a {{ Empresa }}.\n\nSaludos cordiales.",
         "custom_paragraph_rules": [],
-        "additional_emails": []
+        "additional_emails": [],
+        "email_columns": [],
+        "custom_menu_assignments": {
+          "columns": {},
+          "cells": {}
+        }
       }
     },
     {
