@@ -19,11 +19,14 @@ document.addEventListener('DOMContentLoaded', () => {
         activeView: 'word', // 'word' or 'pdf'
         excelMtime: 0,
         isAutoSyncing: false,
+        excelMenus: {},
+        customMenuAssignments: { columns: {}, cells: {} },
         settings: {
             output_format: 'docx',
             output_filename_pattern: '{{ index }}_documento.docx',
             outlook_enabled: false,
             email_column: 'Email',
+            email_columns: [],
             check_column: 'Enviado',
             doc_check_column: 'Doc_Generado',
             doc_check_value_mode: 'timestamp',
@@ -38,7 +41,8 @@ document.addEventListener('DOMContentLoaded', () => {
             email_body_source: 'text',
             email_body: 'Estimado/a {{ Nombre }},\n\nAdjuntamos su documento oficial.\n\nSaludos cordiales.',
             single_email_override: '',
-            custom_paragraph_rules: []
+            custom_paragraph_rules: [],
+            custom_menu_assignments: { columns: {}, cells: {} }
         }
     };
 
@@ -69,6 +73,31 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnAddCol = document.getElementById('btn-add-col');
     const excelGridThead = document.getElementById('excel-grid-thead');
     const excelGridTbody = document.getElementById('excel-grid-tbody');
+    const btnManageCustomMenus = document.getElementById('btn-manage-custom-menus');
+    const customMenusModal = document.getElementById('custom-menus-modal');
+    const btnCloseCustomMenusModal = document.getElementById('btn-close-custom-menus-modal');
+    const btnCancelCustomMenus = document.getElementById('btn-cancel-custom-menus');
+    const btnSaveCustomMenus = document.getElementById('btn-save-custom-menus');
+    const btnCreateMenu = document.getElementById('btn-create-menu');
+    const customMenusNavList = document.getElementById('custom-menus-nav-list');
+    const customMenuDetailsEmpty = document.getElementById('custom-menu-details-empty');
+    const customMenuDetails = document.getElementById('custom-menu-details');
+    const currentMenuNameInput = document.getElementById('current-menu-name-input');
+    const btnDeleteCurrentMenu = document.getElementById('btn-delete-current-menu');
+    const btnAddMenuOption = document.getElementById('btn-add-menu-option');
+    const currentMenuOptionsList = document.getElementById('current-menu-options-list');
+
+    const cellMenuAssignModal = document.getElementById('cell-menu-assign-modal');
+    const btnCloseCellMenuModal = document.getElementById('btn-close-cell-menu-modal');
+    const btnCancelCellMenu = document.getElementById('btn-cancel-cell-menu');
+    const btnConfirmCellMenu = document.getElementById('btn-confirm-cell-menu');
+    const cellMenuSelector = document.getElementById('cell-menu-selector');
+    const assignToWholeColumn = document.getElementById('assign-to-whole-column');
+    const assignTargetDescription = document.getElementById('assign-target-description');
+    const assignTargetColName = document.getElementById('assign-target-col-name');
+
+    const btnAddEmailColField = document.getElementById('btn-add-email-col-field');
+    const additionalEmailColsContainer = document.getElementById('additional-email-cols-container');
 
     const docxDropzone = document.getElementById('docx-dropzone');
     const docxInput = document.getElementById('docx-input');
@@ -312,6 +341,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>`;
         }
 
+        state.activeView = 'word';
+        if (btnViewWord) btnViewWord.classList.add('active');
+        if (btnViewPdf) btnViewPdf.classList.remove('active');
+        if (pdfViewerWrapper) pdfViewerWrapper.classList.add('hidden');
+        if (paperPage) paperPage.classList.remove('hidden');
+        if (pdfViewerFrame) pdfViewerFrame.src = 'about:blank';
+        if (pdfLoadingOverlay) pdfLoadingOverlay.classList.add('hidden');
+        if (docTypeIcon) {
+            docTypeIcon.classList.remove('pdf-mode');
+            docTypeIcon.innerHTML = '<i class="fa-solid fa-file-word"></i>';
+        }
+
         renderVariableChips([]);
         renderEmailMappableVars();
         updateGenerateButtonState();
@@ -403,6 +444,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
             state.outputDirPath = data.project.output_path;
 
+            state.excelMenus = data.menus || {};
+            if (data.project && data.project.settings && data.project.settings.custom_menu_assignments) {
+                state.customMenuAssignments = JSON.parse(JSON.stringify(data.project.settings.custom_menu_assignments));
+            } else {
+                state.customMenuAssignments = { columns: {}, cells: {} };
+            }
+
             if (data.project.settings) {
                 state.settings = { ...state.settings, ...data.project.settings };
             }
@@ -437,7 +485,17 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (btnOpenProjectFolder) btnOpenProjectFolder.classList.remove('hidden');
-            if (btnDeleteProject) btnDeleteProject.classList.remove('hidden');
+            state.activeView = 'word';
+            if (btnViewWord) btnViewWord.classList.add('active');
+            if (btnViewPdf) btnViewPdf.classList.remove('active');
+            if (pdfViewerWrapper) pdfViewerWrapper.classList.add('hidden');
+            if (paperPage) paperPage.classList.remove('hidden');
+            if (pdfViewerFrame) pdfViewerFrame.src = 'about:blank';
+            if (pdfLoadingOverlay) pdfLoadingOverlay.classList.add('hidden');
+            if (docTypeIcon) {
+                docTypeIcon.classList.remove('pdf-mode');
+                docTypeIcon.innerHTML = '<i class="fa-solid fa-file-word"></i>';
+            }
 
             renderDocxTemplatesList();
             
@@ -563,10 +621,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const tplToDelete = state.docxTemplates[index];
         if (!tplToDelete) return;
 
-        showInAppDeleteConfirm(`¿Estás seguro de que deseas desvincular la plantilla Word <strong>${escapeHtml(tplToDelete.filename)}</strong> del proyecto?`, async () => {
+        showInAppDeleteConfirm(`¿Estás seguro de que deseas eliminar permanentemente la plantilla Word <strong>${escapeHtml(tplToDelete.filename)}</strong> de este proyecto y del disco?`, async () => {
             try {
                 if (state.activeProjectId) {
-                    const res = await fetch('/api/unlink-docx', {
+                    const res = await fetch('/api/delete-docx-template', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -576,14 +634,27 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
 
                     const data = await res.json();
-                    if (!res.ok) throw new Error(data.detail || 'Error desvinculando plantilla');
+                    if (!res.ok) throw new Error(data.detail || 'Error al eliminar plantilla Word');
                 }
 
                 state.docxTemplates.splice(index, 1);
                 state.activeDocxIndex = Math.max(0, state.activeDocxIndex - 1);
+
+                // Limpiar previsualización PDF para evitar que quede flotando
+                if (pdfViewerFrame) pdfViewerFrame.src = 'about:blank';
+                if (pdfLoadingOverlay) pdfLoadingOverlay.classList.add('hidden');
+
                 if (state.docxTemplates.length > 0) {
                     selectActiveDocxTemplate(state.activeDocxIndex);
                 } else {
+                    state.docxFilePath = null;
+                    state.docxFileName = null;
+                    state.activeView = 'word';
+                    if (btnViewWord) btnViewWord.classList.add('active');
+                    if (btnViewPdf) btnViewPdf.classList.remove('active');
+                    if (pdfViewerWrapper) pdfViewerWrapper.classList.add('hidden');
+                    if (paperPage) paperPage.classList.remove('hidden');
+
                     renderDocxTemplatesList();
                     if (saveDocxSplitGroup) saveDocxSplitGroup.classList.add('hidden');
                     if (btnOpenNativeDocx) btnOpenNativeDocx.classList.add('hidden');
@@ -591,6 +662,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         docxStatusPill.classList.add('disabled');
                         docxStatusPill.classList.remove('active');
                         docxStatusPill.querySelector('span').textContent = 'Sin Plantilla';
+                    }
+                    if (docTitleDisplay) {
+                        const projName = state.activeProjectId ? (state.projectFolderPath ? state.projectFolderPath.split(/[\\/]/).pop() : 'Proyecto') : 'Proyecto';
+                        docTitleDisplay.textContent = `${projName} (Sin Plantilla Word)`;
                     }
                     paperPage.innerHTML = `
                         <div class="welcome-placeholder">
@@ -602,7 +677,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>`;
                 }
                 updateGenerateButtonState();
-                showToast(`Plantilla '${tplToDelete.filename}' desvinculada del proyecto (conservada en disco)`, 'success');
+                showToast(`Plantilla '${tplToDelete.filename}' eliminada exitosamente del proyecto y del disco`, 'success');
             } catch (err) {
                 showToast(err.message, 'error');
             }
@@ -1259,6 +1334,81 @@ document.addEventListener('DOMContentLoaded', () => {
 
         renderEmailMappableVars();
         renderAdditionalEmailsList();
+        renderAdditionalEmailColumns();
+    }
+
+    function renderAdditionalEmailColumns() {
+        if (!additionalEmailColsContainer) return;
+        additionalEmailColsContainer.innerHTML = '';
+
+        const emailCols = state.settings.email_columns || [];
+        if (emailCols.length === 0) {
+            additionalEmailColsContainer.innerHTML = '<div class="empty-state p-2"><p class="meta text-center fs-12 mb-0">Sin campos adicionales de correo configurados. Haz clic en "Agregar Campo de Correo" (ej: Correo Estudiantes, Correo Profesores).</p></div>';
+            return;
+        }
+
+        emailCols.forEach((item, idx) => {
+            const row = document.createElement('div');
+            row.className = 'email-col-row';
+
+            const nameInput = document.createElement('input');
+            nameInput.type = 'text';
+            nameInput.className = 'form-control input email-col-label';
+            nameInput.placeholder = 'Nombre (ej: Correo Estudiantes)';
+            nameInput.value = item.name || '';
+            nameInput.addEventListener('input', () => {
+                item.name = nameInput.value;
+                updateSaveSettingsButtonState();
+            });
+
+            const colSelect = document.createElement('select');
+            colSelect.className = 'form-control input email-col-select';
+            state.excelColumns.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c;
+                opt.textContent = c;
+                if (c === item.column) opt.selected = true;
+                colSelect.appendChild(opt);
+            });
+            if (!item.column && state.excelColumns.length > 0) {
+                item.column = state.excelColumns[0];
+            }
+            colSelect.addEventListener('change', () => {
+                item.column = colSelect.value;
+                updateSaveSettingsButtonState();
+            });
+
+            const btnDel = document.createElement('button');
+            btnDel.type = 'button';
+            btnDel.className = 'btn-icon-danger';
+            btnDel.title = 'Eliminar campo de correo';
+            btnDel.innerHTML = '<i class="fa-solid fa-trash-can"></i>';
+            btnDel.addEventListener('click', () => {
+                state.settings.email_columns.splice(idx, 1);
+                renderAdditionalEmailColumns();
+                updateSaveSettingsButtonState();
+            });
+
+            row.appendChild(nameInput);
+            row.appendChild(colSelect);
+            row.appendChild(btnDel);
+            additionalEmailColsContainer.appendChild(row);
+        });
+    }
+
+    if (btnAddEmailColField) {
+        btnAddEmailColField.addEventListener('click', () => {
+            if (!state.settings.email_columns) {
+                state.settings.email_columns = [];
+            }
+            const defaultCol = state.excelColumns.length > 0 ? state.excelColumns[0] : '';
+            state.settings.email_columns.push({
+                name: `Correo ${state.settings.email_columns.length + 1}`,
+                column: defaultCol
+            });
+            renderAdditionalEmailColumns();
+            updateSaveSettingsButtonState();
+        });
     }
 
     function renderEmailMappableVars() {
@@ -1489,6 +1639,21 @@ document.addEventListener('DOMContentLoaded', () => {
             state.settings.attachment_type = settingAttachmentType.value;
             state.settings.email_subject = settingEmailSubject.value;
             state.settings.email_body = settingEmailBody.value;
+
+            if (additionalEmailColsContainer) {
+                const extraCols = [];
+                additionalEmailColsContainer.querySelectorAll('.email-col-row').forEach(row => {
+                    const nameInp = row.querySelector('.email-col-label');
+                    const sel = row.querySelector('.email-col-select');
+                    if (sel && sel.value) {
+                        extraCols.push({
+                            name: nameInp ? nameInp.value.trim() : '',
+                            column: sel.value
+                        });
+                    }
+                });
+                state.settings.email_columns = extraCols;
+            }
 
             settingsModal.classList.add('hidden');
             await saveCurrentProjectSettings();
@@ -1987,6 +2152,18 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function getAssignedMenuForCell(rIdx, col) {
+        if (!state.customMenuAssignments) return null;
+        const cellKey = `${rIdx}_${col}`;
+        if (state.customMenuAssignments.cells && state.customMenuAssignments.cells[cellKey]) {
+            return state.customMenuAssignments.cells[cellKey];
+        }
+        if (state.customMenuAssignments.columns && state.customMenuAssignments.columns[col]) {
+            return state.customMenuAssignments.columns[col];
+        }
+        return null;
+    }
+
     function renderExcelGridTable() {
         const isGlobalMandatory = !!state.settings.all_fields_mandatory;
         if (toggleAllFieldsMandatory) {
@@ -2018,10 +2195,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     <i class="fa-solid fa-asterisk"></i>
                 </button>`;
 
+            const colMenu = (state.customMenuAssignments && state.customMenuAssignments.columns) ? state.customMenuAssignments.columns[col] : null;
+            const btnColMenuHtml = `
+                <button class="btn-assign-col-menu ${colMenu ? 'active' : ''}" data-col="${escapeHtml(col)}" title="${colMenu ? `Menú '${colMenu}' asignado a toda la columna (Clic para cambiar/quitar)` : 'Asignar Menú desplegable a toda la columna'}">
+                    <i class="fa-solid fa-list-check"></i>
+                </button>`;
+
             trHead += `
                 <th>
                     <div class="col-header-wrapper">
                         ${btnMandatoryHtml}
+                        ${btnColMenuHtml}
                         <span class="col-title" contenteditable="true" data-col-idx="${idx}">${escapeHtml(col)}</span>${redStar}
                         <button class="btn-icon-danger btn-delete-col" data-col="${escapeHtml(col)}" title="Eliminar columna"><i class="fa-solid fa-trash-can"></i></button>
                     </div>
@@ -2035,7 +2219,36 @@ document.addEventListener('DOMContentLoaded', () => {
             trBody += `<tr><td class="row-index-cell">${rIdx + 1}</td>`;
             state.excelColumns.forEach(col => {
                 const val = row[col] !== undefined && row[col] !== null ? String(row[col]) : '';
-                trBody += `<td contenteditable="true" data-row-idx="${rIdx}" data-col="${escapeHtml(col)}">${escapeHtml(val)}</td>`;
+                const assignedMenu = getAssignedMenuForCell(rIdx, col);
+
+                if (assignedMenu && state.excelMenus && state.excelMenus[assignedMenu]) {
+                    const opts = state.excelMenus[assignedMenu] || [];
+                    let optionsMarkup = `<option value="">-- Seleccionar (${escapeHtml(assignedMenu)}) --</option>`;
+                    opts.forEach(opt => {
+                        optionsMarkup += `<option value="${escapeHtml(opt)}" ${val === opt ? 'selected' : ''}>${escapeHtml(opt)}</option>`;
+                    });
+                    if (val && !opts.includes(val)) {
+                        optionsMarkup += `<option value="${escapeHtml(val)}" selected>${escapeHtml(val)} (Actual)</option>`;
+                    }
+                    optionsMarkup += `<option value="__UNASSIGN__">🔓 Desvincular menú / Manual</option>`;
+
+                    trBody += `
+                        <td class="cell-with-menu" contenteditable="false" data-row-idx="${rIdx}" data-col="${escapeHtml(col)}" title="Celda con menú '${escapeHtml(assignedMenu)}'">
+                            <div class="cell-dropdown-wrapper">
+                                <select class="cell-dropdown-select" data-row-idx="${rIdx}" data-col="${escapeHtml(col)}">
+                                    ${optionsMarkup}
+                                </select>
+                                <button type="button" class="btn-cell-assign-trigger" data-row-idx="${rIdx}" data-col="${escapeHtml(col)}" title="Configurar menú de esta celda">
+                                    <i class="fa-solid fa-caret-down"></i>
+                                </button>
+                            </div>
+                        </td>`;
+                } else {
+                    trBody += `
+                        <td contenteditable="true" data-row-idx="${rIdx}" data-col="${escapeHtml(col)}" title="Clic derecho para asignar menú">
+                            ${escapeHtml(val)}
+                        </td>`;
+                }
             });
             trBody += `
                 <td class="row-action-cell">
@@ -2073,11 +2286,63 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
+        excelGridThead.querySelectorAll('.btn-assign-col-menu').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const col = btn.dataset.col;
+                openCellMenuAssignModal(null, col);
+            });
+        });
+
         excelGridThead.querySelectorAll('.btn-delete-col').forEach(btn => {
             btn.addEventListener('click', () => {
                 const colToDelete = btn.dataset.col;
                 state.excelColumns = state.excelColumns.filter(c => c !== colToDelete);
                 renderExcelGridTable();
+            });
+        });
+
+        excelGridTbody.querySelectorAll('.cell-dropdown-select').forEach(sel => {
+            sel.addEventListener('change', async () => {
+                const rIdx = parseInt(sel.dataset.rowIdx, 10);
+                const col = sel.dataset.col;
+                const chosen = sel.value;
+
+                if (chosen === '__UNASSIGN__') {
+                    const cellKey = `${rIdx}_${col}`;
+                    if (state.customMenuAssignments.cells) delete state.customMenuAssignments.cells[cellKey];
+                    if (state.customMenuAssignments.columns && state.customMenuAssignments.columns[col]) {
+                        delete state.customMenuAssignments.columns[col];
+                    }
+                    state.settings.custom_menu_assignments = state.customMenuAssignments;
+                    await saveCurrentProjectSettings();
+                    renderExcelGridTable();
+                    showToast(`Menú desvinculado de la celda. Edición manual habilitada.`, 'info');
+                    return;
+                }
+
+                if (state.excelRecords[rIdx]) {
+                    state.excelRecords[rIdx][col] = chosen;
+                }
+            });
+        });
+
+        excelGridTbody.querySelectorAll('.btn-cell-assign-trigger').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const rIdx = parseInt(btn.dataset.rowIdx, 10);
+                const col = btn.dataset.col;
+                openCellMenuAssignModal(rIdx, col);
+            });
+        });
+
+        excelGridTbody.querySelectorAll('td[data-col]').forEach(td => {
+            td.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                const rIdx = parseInt(td.dataset.rowIdx, 10);
+                const col = td.dataset.col;
+                if (!isNaN(rIdx) && col) {
+                    openCellMenuAssignModal(rIdx, col);
+                }
             });
         });
 
@@ -2169,7 +2434,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 const rowData = {};
                 state.excelColumns.forEach(col => {
                     const cell = tr.querySelector(`td[data-col="${col}"]`);
-                    rowData[col] = cell ? cell.textContent.trim() : '';
+                    if (cell) {
+                        const selectEl = cell.querySelector('select.cell-dropdown-select');
+                        if (selectEl) {
+                            rowData[col] = selectEl.value;
+                        } else {
+                            rowData[col] = cell.textContent.trim();
+                        }
+                    } else {
+                        rowData[col] = '';
+                    }
                 });
                 newRecords.push(rowData);
             });
@@ -2203,6 +2477,314 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 excelModal.classList.add('hidden');
                 showToast('Tabla Excel actualizada y guardada con éxito en disco', 'success');
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        });
+    }
+
+    // ==========================================
+    // CUSTOM MENUS (menu_list_app) & CELL ASSIGN
+    // ==========================================
+    let currentAssignTarget = { rowIdx: null, col: null };
+
+    function openCellMenuAssignModal(rowIdx, col) {
+        currentAssignTarget = { rowIdx, col };
+        if (!cellMenuAssignModal) return;
+
+        if (assignTargetDescription) {
+            if (rowIdx !== null) {
+                assignTargetDescription.textContent = `Celda Fila ${rowIdx + 1}, Columna '${col}'`;
+            } else {
+                assignTargetDescription.textContent = `Toda la Columna '${col}'`;
+            }
+        }
+        if (assignTargetColName) {
+            assignTargetColName.textContent = col;
+        }
+        if (assignToWholeColumn) {
+            assignToWholeColumn.checked = (rowIdx === null);
+            assignToWholeColumn.disabled = (rowIdx === null);
+        }
+
+        if (cellMenuSelector) {
+            cellMenuSelector.innerHTML = '<option value="">-- Sin Menú (Edición Manual Libre) --</option>';
+            const menuNames = Object.keys(state.excelMenus || {});
+            const currentMenu = rowIdx !== null ? getAssignedMenuForCell(rowIdx, col) : (state.customMenuAssignments.columns && state.customMenuAssignments.columns[col]);
+            menuNames.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m;
+                opt.textContent = `${m} (${(state.excelMenus[m] || []).length} opciones)`;
+                if (m === currentMenu) opt.selected = true;
+                cellMenuSelector.appendChild(opt);
+            });
+        }
+
+        showModal(cellMenuAssignModal);
+    }
+
+    if (btnCloseCellMenuModal) btnCloseCellMenuModal.addEventListener('click', () => cellMenuAssignModal.classList.add('hidden'));
+    if (btnCancelCellMenu) btnCancelCellMenu.addEventListener('click', () => cellMenuAssignModal.classList.add('hidden'));
+
+    if (btnConfirmCellMenu) {
+        btnConfirmCellMenu.addEventListener('click', async () => {
+            const chosenMenu = cellMenuSelector ? cellMenuSelector.value.trim() : '';
+            const applyWholeCol = assignToWholeColumn ? assignToWholeColumn.checked : false;
+            const { rowIdx, col } = currentAssignTarget;
+            if (!col) return;
+
+            if (!state.customMenuAssignments) {
+                state.customMenuAssignments = { columns: {}, cells: {} };
+            }
+            if (!state.customMenuAssignments.columns) state.customMenuAssignments.columns = {};
+            if (!state.customMenuAssignments.cells) state.customMenuAssignments.cells = {};
+
+            if (applyWholeCol || rowIdx === null) {
+                if (chosenMenu) {
+                    state.customMenuAssignments.columns[col] = chosenMenu;
+                    showToast(`Menú '${chosenMenu}' asignado a toda la columna '${col}'`, 'success');
+                } else {
+                    delete state.customMenuAssignments.columns[col];
+                    showToast(`Menú desvinculado de la columna '${col}'. Edición manual habilitada.`, 'info');
+                }
+            } else if (rowIdx !== null) {
+                const cellKey = `${rowIdx}_${col}`;
+                if (chosenMenu) {
+                    state.customMenuAssignments.cells[cellKey] = chosenMenu;
+                    showToast(`Menú '${chosenMenu}' asignado a la celda (Fila ${rowIdx + 1}, ${col})`, 'success');
+                } else {
+                    delete state.customMenuAssignments.cells[cellKey];
+                    showToast(`Menú desvinculado de la celda. Edición manual habilitada.`, 'info');
+                }
+            }
+
+            cellMenuAssignModal.classList.add('hidden');
+            state.settings.custom_menu_assignments = state.customMenuAssignments;
+            await saveCurrentProjectSettings();
+            renderExcelGridTable();
+        });
+    }
+
+    // GESTOR DE MENÚS (menu_list_app)
+    let tempMenus = {};
+    let activeMenuName = null;
+
+    function openCustomMenusModal() {
+        if (!state.excelFilePath) {
+            showToast('Primero debes cargar un archivo Excel para gestionar sus menús', 'error');
+            return;
+        }
+        tempMenus = JSON.parse(JSON.stringify(state.excelMenus || {}));
+        const menuKeys = Object.keys(tempMenus);
+        activeMenuName = menuKeys.length > 0 ? menuKeys[0] : null;
+        renderCustomMenusNav();
+        renderCurrentMenuOptions();
+        showModal(customMenusModal);
+    }
+
+    function renderCustomMenusNav() {
+        if (!customMenusNavList) return;
+        customMenusNavList.innerHTML = '';
+
+        const keys = Object.keys(tempMenus);
+        if (keys.length === 0) {
+            customMenusNavList.innerHTML = '<p class="text-muted fs-12 text-center p-2">Sin menús. Haz clic en "+ Nuevo Menú".</p>';
+            return;
+        }
+
+        keys.forEach(k => {
+            const item = document.createElement('div');
+            item.className = `custom-menu-nav-item ${k === activeMenuName ? 'active' : ''}`;
+            const count = (tempMenus[k] || []).length;
+            item.innerHTML = `
+                <span><i class="fa-solid fa-list-ul mr-1"></i> ${escapeHtml(k)}</span>
+                <span class="custom-menu-count-badge">${count}</span>
+            `;
+            item.addEventListener('click', () => {
+                activeMenuName = k;
+                renderCustomMenusNav();
+                renderCurrentMenuOptions();
+            });
+            customMenusNavList.appendChild(item);
+        });
+    }
+
+    function renderCurrentMenuOptions() {
+        if (!customMenuDetails || !customMenuDetailsEmpty) return;
+
+        if (!activeMenuName || !tempMenus[activeMenuName]) {
+            customMenuDetailsEmpty.classList.remove('hidden');
+            customMenuDetails.classList.add('hidden');
+            return;
+        }
+
+        customMenuDetailsEmpty.classList.add('hidden');
+        customMenuDetails.classList.remove('hidden');
+
+        if (currentMenuNameInput) {
+            currentMenuNameInput.value = activeMenuName;
+        }
+
+        if (currentMenuOptionsList) {
+            currentMenuOptionsList.innerHTML = '';
+            const opts = tempMenus[activeMenuName] || [];
+
+            if (opts.length === 0) {
+                currentMenuOptionsList.innerHTML = '<p class="text-muted fs-12 text-center p-3">Sin opciones añadidas. Haz clic en "Agregar Opción" para ingresar valores.</p>';
+            }
+
+            opts.forEach((optVal, optIdx) => {
+                const optRow = document.createElement('div');
+                optRow.className = 'menu-option-row';
+
+                const inp = document.createElement('input');
+                inp.type = 'text';
+                inp.className = 'form-control input';
+                inp.placeholder = `Opción ${optIdx + 1}`;
+                inp.value = optVal;
+                inp.addEventListener('input', () => {
+                    tempMenus[activeMenuName][optIdx] = inp.value;
+                });
+
+                const delBtn = document.createElement('button');
+                delBtn.type = 'button';
+                delBtn.className = 'btn-icon-danger';
+                delBtn.title = 'Eliminar opción';
+                delBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+                delBtn.addEventListener('click', () => {
+                    tempMenus[activeMenuName].splice(optIdx, 1);
+                    renderCustomMenusNav();
+                    renderCurrentMenuOptions();
+                });
+
+                optRow.appendChild(inp);
+                optRow.appendChild(delBtn);
+                currentMenuOptionsList.appendChild(optRow);
+            });
+        }
+    }
+
+    if (btnManageCustomMenus) {
+        btnManageCustomMenus.addEventListener('click', openCustomMenusModal);
+    }
+    if (btnCloseCustomMenusModal) btnCloseCustomMenusModal.addEventListener('click', () => customMenusModal.classList.add('hidden'));
+    if (btnCancelCustomMenus) btnCancelCustomMenus.addEventListener('click', () => customMenusModal.classList.add('hidden'));
+
+    if (btnCreateMenu) {
+        btnCreateMenu.addEventListener('click', () => {
+            let baseName = 'menu_1';
+            let c = 1;
+            while (tempMenus[baseName]) {
+                c++;
+                baseName = `menu_${c}`;
+            }
+            tempMenus[baseName] = [];
+            activeMenuName = baseName;
+            renderCustomMenusNav();
+            renderCurrentMenuOptions();
+            if (currentMenuNameInput) {
+                currentMenuNameInput.focus();
+                currentMenuNameInput.select();
+            }
+        });
+    }
+
+    if (currentMenuNameInput) {
+        currentMenuNameInput.addEventListener('change', () => {
+            const newName = currentMenuNameInput.value.trim();
+            if (!newName) {
+                showToast('El nombre del menú no puede estar vacío', 'error');
+                currentMenuNameInput.value = activeMenuName;
+                return;
+            }
+            if (newName !== activeMenuName) {
+                if (tempMenus[newName]) {
+                    showToast(`El menú '${newName}' ya existe`, 'error');
+                    currentMenuNameInput.value = activeMenuName;
+                    return;
+                }
+                const oldVals = tempMenus[activeMenuName];
+                delete tempMenus[activeMenuName];
+                tempMenus[newName] = oldVals;
+
+                // Actualizar asignaciones si apuntaban al nombre viejo
+                if (state.customMenuAssignments.columns) {
+                    for (const [col, m] of Object.entries(state.customMenuAssignments.columns)) {
+                        if (m === activeMenuName) state.customMenuAssignments.columns[col] = newName;
+                    }
+                }
+                if (state.customMenuAssignments.cells) {
+                    for (const [k, m] of Object.entries(state.customMenuAssignments.cells)) {
+                        if (m === activeMenuName) state.customMenuAssignments.cells[k] = newName;
+                    }
+                }
+
+                activeMenuName = newName;
+                renderCustomMenusNav();
+                renderCurrentMenuOptions();
+            }
+        });
+    }
+
+    if (btnDeleteCurrentMenu) {
+        btnDeleteCurrentMenu.addEventListener('click', () => {
+            if (!activeMenuName || !tempMenus[activeMenuName]) return;
+            delete tempMenus[activeMenuName];
+            const remaining = Object.keys(tempMenus);
+            activeMenuName = remaining.length > 0 ? remaining[0] : null;
+            renderCustomMenusNav();
+            renderCurrentMenuOptions();
+        });
+    }
+
+    if (btnAddMenuOption) {
+        btnAddMenuOption.addEventListener('click', () => {
+            if (!activeMenuName || !tempMenus[activeMenuName]) return;
+            tempMenus[activeMenuName].push('');
+            renderCustomMenusNav();
+            renderCurrentMenuOptions();
+            if (currentMenuOptionsList) {
+                const inputs = currentMenuOptionsList.querySelectorAll('input');
+                if (inputs.length > 0) inputs[inputs.length - 1].focus();
+            }
+        });
+    }
+
+    if (btnSaveCustomMenus) {
+        btnSaveCustomMenus.addEventListener('click', async () => {
+            if (!state.excelFilePath) {
+                showToast('No hay archivo Excel cargado', 'error');
+                return;
+            }
+
+            const cleanedMenus = {};
+            for (const [mName, mOpts] of Object.entries(tempMenus)) {
+                const cleanName = mName.trim();
+                if (!cleanName) continue;
+                cleanedMenus[cleanName] = (mOpts || []).map(o => String(o).trim()).filter(Boolean);
+            }
+
+            showToast('Guardando menús en la hoja oculta menu_list_app...', 'info');
+
+            try {
+                const res = await fetch('/api/save-excel-menus', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        filepath: state.excelFilePath,
+                        menus: cleanedMenus,
+                        project_id: state.activeProjectId,
+                        assignments: state.customMenuAssignments
+                    })
+                });
+
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Error al guardar menús');
+
+                state.excelMenus = cleanedMenus;
+                customMenusModal.classList.add('hidden');
+                renderExcelGridTable();
+                showToast('Menús guardados exitosamente en la hoja oculta menu_list_app del Excel', 'success');
             } catch (err) {
                 showToast(err.message, 'error');
             }

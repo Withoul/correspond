@@ -109,7 +109,7 @@
                                 <button type="button" id="menu-btn-open-native-docx" class="step-dropdown-item"><i class="fa-solid fa-up-right-from-square"></i> Abrir en Word</button>
                                 <button type="button" id="menu-btn-template-rules" class="step-dropdown-item"><i class="fa-solid fa-diagram-project"></i> Reglas de Plantillas Condicionales</button>
                                 <div class="dropdown-divider"></div>
-                                <button type="button" id="menu-btn-unlink-docx" class="step-dropdown-item text-danger"><i class="fa-solid fa-link-slash"></i> Desvincular Plantilla Actual</button>
+                                <button type="button" id="menu-btn-unlink-docx" class="step-dropdown-item text-danger"><i class="fa-solid fa-trash-can"></i> Eliminar Plantilla Actual</button>
                             </div>
                         </div>
                     </div>
@@ -266,6 +266,7 @@
                     <div class="flex-align-center gap-2">
                         <button type="button" id="btn-add-row" class="btn btn-secondary btn-sm"><i class="fa-solid fa-plus"></i> Agregar Fila</button>
                         <button type="button" id="btn-add-col" class="btn btn-secondary btn-sm"><i class="fa-solid fa-square-plus"></i> Agregar Columna</button>
+                        <button type="button" id="btn-manage-custom-menus" class="btn btn-secondary btn-sm" title="Crear y administrar listas desplegables (hoja oculta menu_list_app)"><i class="fa-solid fa-list-check"></i> Menús Desplegables</button>
                     </div>
                     <label class="mandatory-toggle-pill flex-align-center gap-2 ml-auto" title="Exigir que todos los campos de la tabla contengan información (asterisco rojo *) al generar">
                         <input type="checkbox" id="toggle-all-fields-mandatory" class="custom-checkbox hidden-checkbox">
@@ -378,7 +379,7 @@
                     <div id="outlook-fields-container" class="mt-2 hidden">
                         <div class="grid-2col">
                             <div class="form-group">
-                                <label class="field-label">Columna de Email</label>
+                                <label class="field-label">Columna de Email Principal</label>
                                 <select id="setting-email-col" class="form-control input"></select>
                             </div>
                             <div class="form-group">
@@ -398,6 +399,21 @@
                                     <option value="pdf">PDF</option>
                                     <option value="docx">Word (.docx)</option>
                                 </select>
+                            </div>
+                        </div>
+                        <!-- CAMPOS ADICIONALES DE CORREO (COLUMNAS EXCEL) -->
+                        <div class="form-group mt-3 border-top pt-2">
+                            <div class="flex-justify-between flex-align-center mb-1">
+                                <label class="field-label font-bold" style="margin-bottom: 0;">
+                                    <i class="fa-solid fa-users"></i> Campos Adicionales de Correo (Excel)
+                                </label>
+                                <button type="button" id="btn-add-email-col-field" class="btn btn-secondary btn-xs">
+                                    <i class="fa-solid fa-plus"></i> Agregar Campo de Correo
+                                </button>
+                            </div>
+                            <p class="card-hint mb-2">Agrega más campos de correo de tu tabla (ej: <em>Correo Estudiantes</em>, <em>Correo Profesores</em>). Todos los correos válidos de cada registro recibirán el mensaje.</p>
+                            <div id="additional-email-cols-container" class="additional-fields-list">
+                                <!-- Dynamic rows rendered by JS -->
                             </div>
                         </div>
                         <div class="form-group mt-2">
@@ -709,6 +725,100 @@
             </div>
             <div class="modal-actions mt-4 flex-justify-end">
                 <button type="button" id="btn-close-generated-files-modal-btn" class="btn btn-secondary">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CUSTOM MENUS MODAL (menu_list_app) -->
+    <div id="custom-menus-modal" class="modal-backdrop hidden">
+        <div class="modal-content modal-card modal-lg">
+            <div class="modal-header modal-header-bar">
+                <div class="modal-header-title">
+                    <i class="fa-solid fa-list-check modal-header-icon"></i>
+                    <h2>Gestor de Menús Desplegables (menu_list_app)</h2>
+                </div>
+                <button type="button" id="btn-close-custom-menus-modal" class="btn-icon-danger fs-18"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <p class="card-hint mb-3">
+                    Los menús configurados aquí se almacenan de forma persistente en la hoja oculta <strong>menu_list_app</strong> del archivo Excel. Puedes asignar estos menús a cualquier celda o columna en el visualizador de tablas para bloquear la escritura manual y desplegar sus opciones.
+                </p>
+                <div class="custom-menus-layout">
+                    <!-- Columna Izquierda: Menús -->
+                    <div class="custom-menus-sidebar">
+                        <div class="flex-justify-between flex-align-center mb-2">
+                            <label class="field-label font-bold" style="margin-bottom:0;">Menús Creados</label>
+                            <button type="button" id="btn-create-menu" class="btn btn-primary btn-xs"><i class="fa-solid fa-plus"></i> Nuevo Menú</button>
+                        </div>
+                        <div id="custom-menus-nav-list" class="custom-menus-nav-list">
+                            <!-- Items de menús renderizados por JS -->
+                        </div>
+                    </div>
+                    <!-- Columna Derecha: Opciones del Menú Activo -->
+                    <div class="custom-menus-content">
+                        <div id="custom-menu-details-empty" class="text-center p-4 text-muted">
+                            <i class="fa-solid fa-arrow-left fa-2x mb-2"></i>
+                            <p>Selecciona un menú a la izquierda o crea uno nuevo para definir sus opciones.</p>
+                        </div>
+                        <div id="custom-menu-details" class="hidden">
+                            <div class="flex-justify-between flex-align-center mb-3">
+                                <div class="form-group flex-1 mr-2" style="margin-bottom:0;">
+                                    <label class="field-label">Nombre del Menú (Encabezado en menu_list_app)</label>
+                                    <input type="text" id="current-menu-name-input" class="form-control input" placeholder="Ej: materias, profesores, estados...">
+                                </div>
+                                <button type="button" id="btn-delete-current-menu" class="btn btn-outline-danger btn-sm" title="Eliminar este menú"><i class="fa-solid fa-trash-can"></i> Eliminar Menú</button>
+                            </div>
+                            <div class="flex-justify-between flex-align-center mb-2">
+                                <label class="field-label font-bold" style="margin-bottom:0;">Opciones Disponibles</label>
+                                <button type="button" id="btn-add-menu-option" class="btn btn-secondary btn-xs"><i class="fa-solid fa-plus"></i> Agregar Opción</button>
+                            </div>
+                            <div id="current-menu-options-list" class="menu-options-scroll-list">
+                                <!-- Opciones renderizadas por JS -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-actions mt-4 flex-justify-between">
+                <button type="button" id="btn-cancel-custom-menus" class="btn btn-secondary">Cancelar</button>
+                <button type="button" id="btn-save-custom-menus" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Guardar en Excel (menu_list_app)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CELL MENU ASSIGN MODAL -->
+    <div id="cell-menu-assign-modal" class="modal-backdrop hidden">
+        <div class="modal-content modal-card">
+            <div class="modal-header modal-header-bar">
+                <div class="modal-header-title">
+                    <i class="fa-solid fa-list-check modal-header-icon"></i>
+                    <h2>Asignar Menú Desplegable</h2>
+                </div>
+                <button type="button" id="btn-close-cell-menu-modal" class="btn-icon-danger fs-18"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <p class="fs-12 text-muted mb-2">
+                    Objetivo: <strong id="assign-target-description" class="text-accent">Celda Fila 1 / Columna Nombre</strong>
+                </p>
+                <div class="form-group">
+                    <label class="field-label">Seleccionar Menú Desplegable:</label>
+                    <select id="cell-menu-selector" class="form-control input">
+                        <option value="">-- Sin Menú (Edición Manual Libre) --</option>
+                    </select>
+                </div>
+                <div class="form-group mt-3">
+                    <label class="checkbox-label flex-align-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="assign-to-whole-column" class="custom-checkbox">
+                        <span>Aplicar a <strong>toda la columna</strong> (<span id="assign-target-col-name">Columna</span>)</span>
+                    </label>
+                </div>
+                <p class="card-hint mt-2">
+                    Al asignar un menú, las celdas se bloquean para edición manual y muestran un desplegable con las opciones configuradas en <code>menu_list_app</code>.
+                </p>
+            </div>
+            <div class="modal-actions mt-4 flex-justify-end gap-2">
+                <button type="button" id="btn-cancel-cell-menu" class="btn btn-secondary">Cancelar</button>
+                <button type="button" id="btn-confirm-cell-menu" class="btn btn-primary"><i class="fa-solid fa-check"></i> Aplicar Asignación</button>
             </div>
         </div>
     </div>

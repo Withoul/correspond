@@ -1,6 +1,48 @@
 {
-  "active_project_id": "proj_99a6e1c4",
+  "active_project_id": "proj_812b2b60",
   "projects": [
+    {
+      "id": "proj_812b2b60",
+      "name": "Formatos Lector Tutor",
+      "folder_path": "C:\\Users\\Alex\\Desktop\\correspon\\Proyectos_Correspondencia\\Formatos_Lector_Tutor",
+      "excel_path": null,
+      "docx_path": "C:\\Users\\Alex\\Desktop\\correspon\\Proyectos_Correspondencia\\Formatos_Lector_Tutor\\FORMATO_LECTOR.docx",
+      "docx_paths": [
+        "C:\\Users\\Alex\\Desktop\\correspon\\Proyectos_Correspondencia\\Formatos_Lector_Tutor\\FORMATO_LECTOR.docx",
+        "C:\\Users\\Alex\\Desktop\\correspon\\Proyectos_Correspondencia\\Formatos_Lector_Tutor\\FORMATO_TUTOR.docx"
+      ],
+      "output_path": "C:\\Users\\Alex\\Desktop\\correspon\\Proyectos_Correspondencia\\Formatos_Lector_Tutor\\salida",
+      "created_at": "2026-09-16 09:24",
+      "settings": {
+        "output_format": "docx",
+        "output_filename_pattern": "{{ index }}_documento.docx",
+        "outlook_enabled": false,
+        "email_column": "",
+        "email_columns": [],
+        "custom_menu_assignments": {
+          "columns": {},
+          "cells": {}
+        },
+        "check_column": "",
+        "doc_check_column": "Doc_Generado",
+        "doc_check_value_mode": "timestamp",
+        "doc_check_custom_text": "Generado",
+        "all_fields_mandatory": false,
+        "mandatory_columns": [],
+        "template_rules_enabled": false,
+        "template_rules": [],
+        "send_mode": "display",
+        "attachment_type": "pdf",
+        "email_subject": "Notificación Oficial",
+        "email_body_source": "text",
+        "email_body": "",
+        "custom_paragraph_rules": [],
+        "additional_emails": [],
+        "single_email_override": "",
+        "doc_check_enabled": false,
+        "email_body_template": ""
+      }
+    },
     {
       "id": "proj_99a6e1c4",
       "name": "Titulacion",
@@ -16,9 +58,9 @@
       "settings": {
         "output_format": "docx",
         "output_filename_pattern": "{{ index }}_documento.docx",
-        "outlook_enabled": false,
-        "email_column": "Email",
-        "check_column": "Enviado",
+        "outlook_enabled": true,
+        "email_column": "ID",
+        "check_column": "ID",
         "doc_check_column": "Doc_Generado",
         "doc_check_value_mode": "timestamp",
         "doc_check_custom_text": "Generado",
@@ -32,7 +74,10 @@
         "email_body_source": "text",
         "email_body": "Estimado/a {{ Nombre }},\n\nAdjuntamos su documento oficial correspondiente a {{ Empresa }}.\n\nSaludos cordiales.",
         "custom_paragraph_rules": [],
-        "additional_emails": []
+        "additional_emails": [],
+        "single_email_override": "",
+        "doc_check_enabled": true,
+        "email_body_template": "C:\\Users\\Alex\\Desktop\\correspon\\Proyectos_Correspondencia\\Titulacion\\EJEMPLO lector.docx"
       }
     },
     {

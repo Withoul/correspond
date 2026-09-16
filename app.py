@@ -94,7 +94,9 @@ DEFAULT_PROJECT_SETTINGS = {
     "email_body_source": "text",
     "email_body": "Estimado/a {{ Nombre }},\n\nAdjuntamos su documento oficial correspondiente a {{ Empresa }}.\n\nSaludos cordiales.",
     "custom_paragraph_rules": [],
-    "additional_emails": []
+    "additional_emails": [],
+    "email_columns": [],
+    "custom_menu_assignments": {"columns": {}, "cells": {}}
 }
 
 def load_project_settings(folder_path: str) -> dict:
@@ -422,6 +424,14 @@ async def delete_project(req: DeleteProjectRequest):
         except Exception:
             shutil.rmtree(folder_path, ignore_errors=True)
 
+    # Limpiar cualquier vista previa PDF generada
+    PDF_PREVIEW_CACHE.clear()
+    for f in TEMP_DIR.glob("preview_*.pdf"):
+        try:
+            os.remove(f)
+        except Exception:
+            pass
+
     remaining = [p for p in projects if p["id"] != req.project_id]
     p_data["projects"] = remaining
 
@@ -651,6 +661,119 @@ async def unlink_docx_api(req: UnlinkFileRequest):
     return {"success": True, "docx_paths": selected.get("docx_paths", [])}
 
 
+class GetExcelMenusRequest(BaseModel):
+    filepath: str
+
+
+class SaveExcelMenusRequest(BaseModel):
+    filepath: str
+    menus: dict
+    project_id: Optional[str] = None
+    assignments: Optional[dict] = None
+
+
+def get_excel_menus_from_file(filepath: Optional[str]) -> dict:
+    """Lee todos los menús personalizados y sus opciones desde la hoja oculta menu_list_app."""
+    if not filepath or not os.path.exists(filepath):
+        return {}
+    if not filepath.lower().endswith((".xlsx", ".xlsm", ".xls")):
+        return {}
+    try:
+        wb = openpyxl.load_workbook(filepath, data_only=True)
+        if "menu_list_app" not in wb.sheetnames:
+            return {}
+        ws = wb["menu_list_app"]
+        menus = {}
+        for col_idx in range(1, ws.max_column + 1):
+            header_val = ws.cell(row=1, column=col_idx).value
+            if header_val is None:
+                continue
+            menu_name = str(header_val).strip()
+            if not menu_name:
+                continue
+            items = []
+            for r in range(2, ws.max_row + 1):
+                v = ws.cell(row=r, column=col_idx).value
+                if v is not None:
+                    s_val = str(v).strip()
+                    if s_val:
+                        items.append(s_val)
+            menus[menu_name] = items
+        return menus
+    except Exception as e:
+        print(f"Error leyendo menu_list_app de {filepath}: {e}")
+        return {}
+
+
+def save_excel_menus_to_file(filepath: str, menus: dict) -> bool:
+    """Crea o actualiza la hoja oculta menu_list_app en el archivo Excel con los menús y opciones."""
+    if not filepath or not os.path.exists(filepath):
+        return False
+    if not filepath.lower().endswith((".xlsx", ".xlsm", ".xls")):
+        return False
+    try:
+        is_xlsm = filepath.lower().endswith(".xlsm")
+        wb = openpyxl.load_workbook(filepath, keep_vba=is_xlsm)
+        if "menu_list_app" in wb.sheetnames:
+            ws = wb["menu_list_app"]
+            for row in ws.iter_rows():
+                for cell in row:
+                    cell.value = None
+        else:
+            ws = wb.create_sheet(title="menu_list_app")
+
+        # Asegurar que la hoja siempre esté oculta
+        ws.sheet_state = "hidden"
+
+        col_idx = 1
+        for menu_name, options in menus.items():
+            clean_name = str(menu_name).strip()
+            if not clean_name:
+                continue
+            ws.cell(row=1, column=col_idx, value=clean_name)
+            for opt_idx, opt in enumerate(options):
+                opt_str = str(opt).strip()
+                if opt_str:
+                    ws.cell(row=opt_idx + 2, column=col_idx, value=opt_str)
+            col_idx += 1
+
+        wb.save(filepath)
+        return True
+    except PermissionError:
+        raise HTTPException(
+            status_code=409,
+            detail="No se pudo guardar la hoja oculta menu_list_app porque el archivo Excel está abierto en Microsoft Excel. Por favor ciérralo e intenta nuevamente."
+        )
+    except Exception as e:
+        print(f"Error guardando menu_list_app en {filepath}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error guardando menús en Excel: {str(e)}")
+
+
+@app.post("/api/get-excel-menus")
+async def api_get_excel_menus(req: GetExcelMenusRequest):
+    """Retorna los menús y opciones almacenados en la hoja oculta menu_list_app del archivo Excel."""
+    menus = get_excel_menus_from_file(req.filepath)
+    return {"success": True, "menus": menus}
+
+
+@app.post("/api/save-excel-menus")
+async def api_save_excel_menus(req: SaveExcelMenusRequest):
+    """Guarda los menús y opciones en la hoja oculta menu_list_app y sincroniza las asignaciones del proyecto."""
+    save_excel_menus_to_file(req.filepath, req.menus)
+    if req.project_id:
+        p_data = load_projects_data()
+        selected = next((p for p in p_data.get("projects", []) if p["id"] == req.project_id), None)
+        if selected and selected.get("folder_path"):
+            st = load_project_settings(selected["folder_path"])
+            if req.assignments is not None:
+                st["custom_menu_assignments"] = req.assignments
+            st["custom_menus_cache"] = req.menus
+            save_project_settings(selected["folder_path"], st)
+            selected["settings"] = st
+            save_projects_data(p_data)
+    return {"success": True, "menus": req.menus}
+
+
 @app.post("/api/reload-excel")
 async def reload_excel(data: dict):
     """Vuelve a leer el archivo Excel/CSV desde el disco y retorna las columnas y registros actualizados."""
@@ -670,7 +793,8 @@ async def reload_excel(data: dict):
             "columns": columns,
             "total_rows": len(df),
             "records": records,
-            "all_records": records
+            "all_records": records,
+            "menus": get_excel_menus_from_file(filepath)
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error leyendo archivo Excel: {str(e)}")
@@ -783,7 +907,10 @@ async def select_project(req: SelectProjectRequest):
         if valid_docx_paths:
             selected["docx_path"] = valid_docx_paths[0]
             selected["docx_paths"] = valid_docx_paths
-            save_projects_data(p_data)
+        else:
+            selected["docx_path"] = None
+            selected["docx_paths"] = []
+        save_projects_data(p_data)
 
     docx_templates = []
     for dp in valid_docx_paths:
@@ -809,6 +936,9 @@ async def select_project(req: SelectProjectRequest):
     p_data["active_project_id"] = req.project_id
     save_projects_data(p_data)
 
+    excel_p = selected.get("excel_path")
+    menus = get_excel_menus_from_file(excel_p) if excel_p else {}
+
     return {
         "success": True,
         "project": selected,
@@ -816,7 +946,8 @@ async def select_project(req: SelectProjectRequest):
         "records": records,
         "total_rows": total_rows,
         "html": first_html,
-        "docx_templates": docx_templates
+        "docx_templates": docx_templates,
+        "menus": menus
     }
 
 
@@ -970,6 +1101,7 @@ async def upload_excel(file: UploadFile = File(...), project_id: Optional[str] =
             "total_rows": total_rows,
             "preview": preview_data,
             "all_records": all_records,
+            "menus": get_excel_menus_from_file(str(saved_path.resolve()))
         }
 
     except Exception as e:
@@ -1063,7 +1195,15 @@ def update_excel_preserving_styles(filepath: str, columns: List[str], records: L
     if filepath_lower.endswith((".xlsx", ".xlsm", ".xls")):
         is_xlsm = filepath_lower.endswith(".xlsm")
         wb = openpyxl.load_workbook(filepath, keep_vba=is_xlsm)
-        sheet = wb.active
+        
+        # Seleccionar la primera hoja de datos (que no sea la hoja oculta menu_list_app)
+        sheet = None
+        for s in wb.worksheets:
+            if s.title != "menu_list_app":
+                sheet = s
+                break
+        if sheet is None:
+            sheet = wb.active
 
         # 1. Encabezados (Fila 1)
         for c_idx, col_name in enumerate(columns):
@@ -1097,6 +1237,9 @@ def update_excel_preserving_styles(filepath: str, columns: List[str], records: L
             for extra_row in range(target_rows_count + 2, max_existing_rows + 1):
                 for c_idx in range(1, max(len(columns) + 1, sheet.max_column + 1)):
                     sheet.cell(row=extra_row, column=c_idx).value = None
+
+        if "menu_list_app" in wb.sheetnames:
+            wb["menu_list_app"].sheet_state = "hidden"
 
         wb.save(filepath)
     else:
@@ -1545,7 +1688,7 @@ async def add_docx_template(project_id: str = Form(...), file: UploadFile = File
 
 @app.post("/api/delete-docx-template")
 async def delete_docx_template(req: DeleteTemplateRequest):
-    """Elimina una plantilla Word de un proyecto."""
+    """Elimina físicamente una plantilla Word de un proyecto y elimina sus previsualizaciones PDF asociadas."""
     p_data = load_projects_data()
     selected = None
     for p in p_data.get("projects", []):
@@ -1555,20 +1698,48 @@ async def delete_docx_template(req: DeleteTemplateRequest):
     if not selected:
         raise HTTPException(status_code=404, detail="Proyecto no encontrado.")
 
-    paths = selected.get("docx_paths", [])
-    if req.docx_path in paths:
-        paths.remove(req.docx_path)
-        selected["docx_paths"] = paths
-        if selected.get("docx_path") == req.docx_path:
-            selected["docx_path"] = paths[0] if paths else ""
-        save_projects_data(p_data)
-        if os.path.exists(req.docx_path):
+    # 1. Liberar locks COM en Word si el archivo está abierto
+    folder_path = selected.get("folder_path")
+    if folder_path:
+        force_close_project_files(folder_path)
+
+    # 2. Limpiar cache y archivo físico de previsualización PDF
+    resolved_key = str(Path(req.docx_path).resolve()) if req.docx_path else ""
+    if resolved_key and resolved_key in PDF_PREVIEW_CACHE:
+        cached_info = PDF_PREVIEW_CACHE.pop(resolved_key)
+        old_preview = TEMP_DIR / cached_info.get("filename", "")
+        if old_preview.exists():
             try:
-                os.remove(req.docx_path)
+                os.remove(old_preview)
             except Exception:
                 pass
 
-    return {"success": True, "docx_paths": paths}
+    # 3. Eliminar físicamente el archivo .docx del disco
+    if req.docx_path and os.path.exists(req.docx_path):
+        try:
+            os.remove(req.docx_path)
+        except Exception as e:
+            print(f"Aviso al eliminar plantilla Word {req.docx_path}: {e}")
+
+    # 4. Actualizar listas en el proyecto
+    paths = selected.get("docx_paths", [])
+    if req.docx_path in paths:
+        paths.remove(req.docx_path)
+    selected["docx_paths"] = paths
+    if selected.get("docx_path") == req.docx_path:
+        selected["docx_path"] = paths[0] if paths else None
+
+    # 5. Si ya no quedan plantillas, limpiar caché y cualquier archivo preview_*.pdf remanente en temp_uploads
+    if not paths:
+        PDF_PREVIEW_CACHE.clear()
+        for f in TEMP_DIR.glob("preview_*.pdf"):
+            try:
+                os.remove(f)
+            except Exception:
+                pass
+
+    save_projects_data(p_data)
+    return {"success": True, "docx_paths": paths, "remaining": len(paths)}
 
 
 def process_generation_job(job_id: str, excel_path: str, docx_paths: List[str], filename_pattern: str, output_dir_override: Optional[str] = None, settings: Optional[dict] = None, action: str = "both", selected_row_indices: Optional[List[int]] = None, generate_mode: str = "all"):
@@ -1828,15 +1999,31 @@ def process_generation_job(job_id: str, excel_path: str, docx_paths: List[str], 
                 check_val = str(clean_context.get(check_col, "")).strip()
                 is_already_sent = bool(check_val) and check_val.upper() not in ["NO", "FALSE", "0", "NONE"]
 
-                # Obtener destinatarios finales (principal + adicionales condicionales o fijos)
+                # Obtener destinatarios finales (principal + campos adicionales de la tabla + adicionales condicionales o fijos)
                 recipients = []
                 if single_email_override:
                     recipients.append(single_email_override)
                 else:
+                    # 1. Columna de correo principal
                     if target_email:
-                        recipients.append(target_email)
+                        for em in re.split(r'[;,]', target_email):
+                            em_clean = em.strip()
+                            if em_clean and em_clean not in recipients:
+                                recipients.append(em_clean)
                     
-                    # Correos adicionales/fijos con reglas
+                    # 2. Campos adicionales de correo configurados desde columnas de la tabla (ej: Correo Estudiantes, Correo Profesores)
+                    extra_email_cols = st.get("email_columns", [])
+                    for ecol in extra_email_cols:
+                        col_key = ecol.get("column", "").strip() if isinstance(ecol, dict) else str(ecol).strip()
+                        if col_key:
+                            col_val = str(clean_context.get(col_key, "")).strip()
+                            if col_val:
+                                for em in re.split(r'[;,]', col_val):
+                                    em_clean = em.strip()
+                                    if em_clean and em_clean not in recipients:
+                                        recipients.append(em_clean)
+
+                    # 3. Correos adicionales/fijos con reglas
                     additional_emails_config = st.get("additional_emails", [])
                     for add_item in additional_emails_config:
                         add_email = add_item.get("email", "").strip()
